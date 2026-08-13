@@ -1,0 +1,6 @@
+{
+  "name": "PDF Studio - Spotify Theme Editor",
+  "description": "Spotify-themed modern PDF tool suite featuring AI summary & chat, merging, page reordering, watermarking, annotations, compression, and conversion.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_AI_API"]
+}
