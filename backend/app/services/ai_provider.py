@@ -38,7 +38,7 @@ class GenAIProvider(BaseAIProvider):
                 raise ValueError("AI_API_KEY environment variable is not set.")
             self._client = genai.Client(
                 api_key=self.api_key,
-                http_options={"headers": {"User-Agent": "spoti-pdf-studio"}},
+                http_options={"headers": {"User-Agent": "easy-pdf"}},
             )
         return self._client
 

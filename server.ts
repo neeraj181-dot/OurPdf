@@ -23,7 +23,7 @@ function getAIClient() {
     apiKey,
     httpOptions: {
       headers: {
-        "User-Agent": "spoti-pdf-studio",
+        "User-Agent": "easy-pdf",
       },
     },
   });
@@ -83,7 +83,7 @@ app.post("/api/ai/chat", async (req, res) => {
     const model = process.env.AI_MODEL_NAME || "gemini-3.6-flash";
     
     // Construct system prompt with PDF context
-    const systemInstruction = `You are SpotiPDF AI Assistant, an expert PDF document companion built into a Spotify-styled PDF Studio.
+    const systemInstruction = `You are Easy PDF AI Assistant, an expert PDF document companion built into Easy PDF.
 Answer questions accurately based on the provided PDF content. If the answer is directly in the document, quote or cite specific context or page hints when possible.
 Be helpful, precise, clear, and engaging.
 
@@ -226,7 +226,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`PDF Studio server running on http://localhost:${PORT}`);
+    console.log(`Easy PDF server running on http://localhost:${PORT}`);
   });
 }
 

@@ -1,6 +1,6 @@
-# SpotiPDF Studio - FastAPI Backend
+# Easy PDF - FastAPI Backend
 
-Python FastAPI backend for SpotiPDF Studio, featuring a provider-independent AI architecture.
+Python FastAPI backend for Easy PDF, featuring a provider-independent AI architecture.
 
 ## Setup & Running
 

@@ -55,7 +55,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
             </div>
             <div>
               <h1 className="text-zinc-100 font-bold tracking-tight text-sm leading-none flex items-center gap-1.5">
-                PDF Studio
+                Easy PDF
               </h1>
               <p className="text-[11px] text-zinc-400 mt-1 font-normal">Document Processing</p>
             </div>

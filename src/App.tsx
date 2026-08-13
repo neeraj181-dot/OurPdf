@@ -355,7 +355,7 @@ export default function App() {
                   <div className="max-w-xl text-center sm:text-left">
                     <div className="flex items-center justify-center sm:justify-start gap-2 text-xs font-medium text-[#1DB954] uppercase tracking-wider">
                       <FileText className="w-4 h-4 text-[#1DB954]" />
-                      <span>PDF Studio Workspace</span>
+                      <span>Easy PDF Workspace</span>
                     </div>
                     <h2 className="text-2xl font-bold text-zinc-100 mt-1 tracking-tight leading-snug">
                       Professional Document Processing Engine
