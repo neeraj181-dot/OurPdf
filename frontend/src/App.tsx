@@ -61,10 +61,13 @@ export default function App() {
   // Handle Uploading PDF Files
   const handleFileUpload = async (uploadedFiles: FileList | File[]) => {
     const fileArray = Array.from(uploadedFiles).filter(
-      (f) => f.type === "application/pdf" || f.name.endsWith(".pdf")
+      (f) => f.name.toLowerCase().endsWith(".pdf") || f.type.toLowerCase().includes("pdf")
     );
 
-    if (fileArray.length === 0) return;
+    if (fileArray.length === 0) {
+      alert("Please select a valid PDF file.");
+      return;
+    }
 
     soundEffects.playClick();
     setIsProcessing(true);
@@ -73,27 +76,33 @@ export default function App() {
       const newItems: PDFFileItem[] = [];
 
       for (const file of fileArray) {
-        const processed = await processPdfFile(file);
-        const item: PDFFileItem = {
-          id: `file-${Date.now()}-${Math.random()}`,
-          file,
-          name: file.name,
-          size: file.size,
-          pagesCount: processed.pagesCount,
-          pageThumbnails: processed.pageThumbnails,
-          extractedText: processed.fullText,
-          pageTexts: processed.pageTexts,
-        };
-        newItems.push(item);
+        try {
+          const processed = await processPdfFile(file);
+          const item: PDFFileItem = {
+            id: `file-${Date.now()}-${Math.random()}`,
+            file,
+            name: file.name,
+            size: file.size,
+            pagesCount: processed.pagesCount,
+            pageThumbnails: processed.pageThumbnails,
+            extractedText: processed.fullText,
+            pageTexts: processed.pageTexts,
+          };
+          newItems.push(item);
+        } catch (fileErr: any) {
+          console.error(`Error processing file ${file.name}:`, fileErr);
+          alert(`Failed to process PDF "${file.name}": ${fileErr?.message || "Invalid or corrupted PDF file."}`);
+        }
       }
 
-      setFiles((prev) => [...prev, ...newItems]);
       if (newItems.length > 0) {
-        setActiveFileId(newItems[0].id);
+        setFiles((prev) => [...prev, ...newItems]);
+        setActiveFileId((prev) => prev || newItems[0].id);
+        soundEffects.playSuccess();
       }
-      soundEffects.playSuccess();
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to load PDF:", e);
+      alert(`Failed to load PDF: ${e?.message || "An error occurred during file upload."}`);
     } finally {
       setIsProcessing(false);
     }
@@ -138,11 +147,6 @@ export default function App() {
     if (toolId === "ai-ocr") setActiveAiTab("ocr");
     if (toolId === "ai-translate") setActiveAiTab("translate");
     if (toolId === "ai-extract") setActiveAiTab("extract");
-
-    // Auto open file selector if no file is present and tool requires file
-    if (files.length === 0 && toolId !== "img-to-pdf") {
-      fileInputRef.current?.click();
-    }
   };
 
   // Handle Preset Pipeline Selection from Sidebar
@@ -161,8 +165,9 @@ export default function App() {
       setDownloadBytes(merged);
       setDownloadFileName("Merged_PDF_Playlist.pdf");
       soundEffects.playSuccess();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Failed to merge PDFs: ${e?.message || "Operation failed"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -178,8 +183,9 @@ export default function App() {
       setDownloadBytes(output);
       setDownloadFileName(`Organized_${activeFile.name}`);
       soundEffects.playSuccess();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Failed to organize pages: ${e?.message || "Operation failed"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -193,8 +199,9 @@ export default function App() {
       setDownloadBytes(output);
       setDownloadFileName(`Watermarked_${activeFile.name}`);
       soundEffects.playSuccess();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Failed to apply watermark: ${e?.message || "Operation failed"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -208,8 +215,9 @@ export default function App() {
       setDownloadBytes(output);
       setDownloadFileName(`Numbered_${activeFile.name}`);
       soundEffects.playSuccess();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Failed to add page numbers: ${e?.message || "Operation failed"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -223,8 +231,9 @@ export default function App() {
       setDownloadBytes(output);
       setDownloadFileName("Converted_Images.pdf");
       soundEffects.playSuccess();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Failed to convert images to PDF: ${e?.message || "Operation failed"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -293,9 +302,12 @@ export default function App() {
         type="file"
         ref={fileInputRef}
         multiple
-        accept="application/pdf"
+        accept="application/pdf,.pdf"
         onChange={(e) => {
-          if (e.target.files) handleFileUpload(e.target.files);
+          if (e.target.files && e.target.files.length > 0) {
+            handleFileUpload(e.target.files);
+            e.target.value = "";
+          }
         }}
         className="hidden"
       />
@@ -317,7 +329,11 @@ export default function App() {
           activeFileId={activeFileId}
           onSelectFile={(id) => setActiveFileId(id)}
           onRemoveFile={handleRemoveFile}
-          onUploadClick={() => fileInputRef.current?.click()}
+          onUploadClick={() => {
+            setActiveView("home");
+            setActiveToolId("merge");
+          }}
+          onOpenFilePicker={() => fileInputRef.current?.click()}
           activeView={activeView}
           setActiveView={(view) => {
             setActiveView(view);
@@ -337,7 +353,10 @@ export default function App() {
             setSearchQuery={setSearchQuery}
             selectedCategory={selectedCategory}
             setSelectedCategory={setSelectedCategory}
-            onUploadClick={() => fileInputRef.current?.click()}
+            onUploadClick={() => {
+              setActiveView("home");
+              setActiveToolId("merge");
+            }}
             activeToolId={activeToolId}
             onBackClick={() => {
               setActiveToolId(null);
@@ -366,7 +385,10 @@ export default function App() {
 
                     <div className="flex items-center justify-center sm:justify-start gap-3 mt-4">
                       <button
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={() => {
+                          setActiveView("home");
+                          setActiveToolId("merge");
+                        }}
                         className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-5 py-2.5 rounded-lg transition-colors cursor-pointer"
                       >
                         <Plus className="w-4 h-4 stroke-[2.5]" />

@@ -1,9 +1,10 @@
 import { PDFDocument, rgb, degrees, StandardFonts } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { WatermarkOptions, PageNumberOptions } from "../types";
 
-// Configure worker for pdfjs-dist
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs`;
+// Configure worker for pdfjs-dist using Vite bundled worker URL
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 /**
  * Reads a File object into an ArrayBuffer
@@ -22,7 +23,8 @@ export async function processPdfFile(file: File): Promise<{
   pageTexts: string[];
 }> {
   const arrayBuffer = await fileToArrayBuffer(file);
-  const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdfDoc = await loadingTask.promise;
   const pagesCount = pdfDoc.numPages;
 
   const pageThumbnails: string[] = [];
@@ -33,27 +35,41 @@ export async function processPdfFile(file: File): Promise<{
   const renderLimit = Math.min(pagesCount, 30);
 
   for (let i = 1; i <= renderLimit; i++) {
-    const page = await pdfDoc.getPage(i);
+    try {
+      const page = await pdfDoc.getPage(i);
 
-    // Text extraction
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item: any) => item.str || "")
-      .join(" ");
-    pageTexts.push(pageText);
-    fullText += `--- Page ${i} ---\n${pageText}\n\n`;
+      // Text extraction
+      let pageText = "";
+      try {
+        const textContent = await page.getTextContent();
+        pageText = textContent.items
+          .map((item: any) => item.str || "")
+          .join(" ");
+      } catch (err) {
+        console.warn(`Could not extract text for page ${i}:`, err);
+      }
+      pageTexts.push(pageText);
+      fullText += `--- Page ${i} ---\n${pageText}\n\n`;
 
-    // Render thumbnail canvas
-    const viewport = page.getViewport({ scale: 0.35 });
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
-      pageThumbnails.push(canvas.toDataURL("image/jpeg", 0.7));
-    } else {
-      pageThumbnails.push("");
+      // Render thumbnail canvas
+      try {
+        const viewport = page.getViewport({ scale: 0.35 });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          await page.render({ canvasContext: ctx, viewport } as any).promise;
+          pageThumbnails.push(canvas.toDataURL("image/jpeg", 0.7));
+        } else {
+          pageThumbnails.push("");
+        }
+      } catch (err) {
+        console.warn(`Could not render thumbnail for page ${i}:`, err);
+        pageThumbnails.push("");
+      }
+    } catch (err) {
+      console.warn(`Failed to process page ${i}:`, err);
     }
   }
 
@@ -263,7 +279,8 @@ export async function imagesToPDF(imageFiles: File[]): Promise<Uint8Array> {
  */
 export async function pdfToImages(file: File): Promise<string[]> {
   const arrayBuffer = await fileToArrayBuffer(file);
-  const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdfDoc = await loadingTask.promise;
   const numPages = pdfDoc.numPages;
   const images: string[] = [];
 
@@ -275,7 +292,7 @@ export async function pdfToImages(file: File): Promise<string[]> {
     if (ctx) {
       canvas.width = viewport.width;
       canvas.height = viewport.height;
-      await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
+      await page.render({ canvasContext: ctx, viewport } as any).promise;
       images.push(canvas.toDataURL("image/png"));
     }
   }
@@ -284,16 +301,21 @@ export async function pdfToImages(file: File): Promise<string[]> {
 }
 
 /**
- * Helper to download raw PDF bytes in browser
+ * Helper to download raw PDF bytes in browser strictly as file download without opening browser PDF viewer tab
  */
 export function downloadPdfBytes(bytes: Uint8Array, filename: string) {
-  const blob = new Blob([bytes], { type: "application/pdf" });
+  // Use octet-stream MIME type so browser triggers download save-as dialog rather than opening built-in PDF viewer tab
+  const blob = new Blob([bytes], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+  const cleanFilename = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+  a.setAttribute("download", cleanFilename);
+  a.download = cleanFilename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
 }

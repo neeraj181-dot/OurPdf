@@ -1,397 +1,61 @@
-# 📄 Easy PDF
+# XPDF
 
-<div align="center">
+## 1. Frontend Setup (React + Vite)
 
-![Easy PDF Banner](https://img.shields.io/badge/Easy_PDF-Studio_Engine-1DB954?style=for-the-badge&logo=pdf&logoColor=white)
-[![React 19](https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
-[![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-4.1-38BDF8?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![Google Gemini AI](https://img.shields.io/badge/Google_Gemini-3.6_Flash-8E75B2?style=for-the-badge&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-green.svg?style=for-the-badge)](LICENSE)
-
-**A high-performance, Spotify-inspired web application for privacy-first PDF editing, visual page organization, and Google Gemini 3.6 Flash AI document intelligence.**
-
-[Key Features](#-features) • [Workspace Tools](#-workspace-tools-overview) • [Tech Stack](#-tech-stack--architecture) • [Getting Started](#-getting-started) • [API Documentation](#-ai-api-endpoints) • [Project Structure](#-project-structure) • [FAQ](#-troubleshooting--faq)
-
-</div>
-
----
-
-## 📋 Table of Contents
-
-- [🌟 Overview](#-overview)
-- [✨ Key Features](#-features)
-  - [🔒 Privacy-First Client Engine](#-client-side-pdf-engine-privacy-first)
-  - [🧠 Gemini AI Document Intelligence](#-gemini-ai-document-intelligence)
-  - [🎧 Spotify-Inspired Micro-UX](#-audio-feedback--spotify-inspired-ux)
-- [🛠️ Workspace Tools Overview](#-workspace-tools-overview)
-- [🏗️ Tech Stack & Architecture](#-tech-stack--architecture)
-- [📁 Project Structure](#-project-structure)
-- [🚀 Getting Started](#-getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Environment Variables](#environment-variables)
-  - [Development & Production Commands](#running-the-application)
-- [🔌 AI API Endpoints](#-ai-api-endpoints)
-- [🛡️ Security & Privacy Architecture](#-security--privacy-architecture)
-- [❓ Troubleshooting & FAQ](#-troubleshooting--faq)
-- [📄 License](#-license)
-
----
-
-## 🌟 Overview
-
-**Easy PDF** reimagines document management by bringing traditional PDF utilities into an intuitive, Spotify-inspired dark-mode web application. Built with **React 19**, **Vite 6**, and **TypeScript 5.8**, it combines zero-upload browser PDF manipulation with Google's **Gemini 3.6 Flash** AI engine.
-
-### Why Easy PDF?
-> Most online PDF tools upload your sensitive financial reports, legal contracts, and personal documents to distant cloud servers just to merge pages or insert watermarks. **Easy PDF executes all document transformations client-side inside your browser.** When advanced document insights are needed, Google Gemini AI powers instant executive summaries, contextual Q&A, and structured data extraction.
-
----
-
-## ✨ Features
-
-### 🔒 Client-Side PDF Engine (Privacy-First)
-All core document operations run 100% locally in your web browser using `pdf-lib` and `pdfjs-dist`. Confidential files never leave your computer during editing.
-
-- 🔀 **Merge PDF**: Combine multiple PDF files into a single document with visual drag-and-drop order adjustment.
-- ✂️ **Split PDF**: Extract specific page numbers or page ranges (`1-3, 5, 8-10`) into separate PDF files.
-- 🧩 **Organize & Rotate**: Interactive grid preview to reorder pages, rotate individual pages 90°/180°/270°, delete pages, or duplicate pages.
-- 🏷️ **Watermark Studio**: Add custom text watermarks with control over font size, color, opacity (10%-100%), rotation angle, and placement (`Center`, `Top`, `Bottom`, `Tile Grid`).
-- 🧹 **Object & Watermark Eraser**: Interactive HTML5 canvas brush and rectangle mask tools to erase unwanted stamps, watermarks, or marks from documents.
-- 🔢 **Page Numbering**: Stamp customizable page numbers (`Page N`, `N of Total`, `- N -`) with flexible alignment (`Bottom-Right`, `Bottom-Center`, `Top-Right`, `Bottom-Left`).
-- ✍️ **Sign & Edit Annotations**: Overlay digital signatures, custom text markup, rubber stamps, and highlights.
-- 🔄 **Format Conversions**:
-  - **Images to PDF**: Convert photos (JPEG, PNG, WebP) into structured multi-page PDF documents.
-  - **PDF to Images**: Render high-definition PNG page snapshots downloadable individually or as a ZIP archive.
-
----
-
-### 🧠 Gemini AI Document Intelligence
-Powered by `@google/genai` (Gemini 3.6 Flash) for deep document parsing:
-
-- ⚡ **Executive Summarizer**: Generates instant structured briefs with core paragraphs, key takeaways, action items, document classification, and estimated reading time.
-- 💬 **Contextual Q&A Chat**: Ask questions directly to your PDF with grounded answers and page reference hints.
-- 🔍 **AI OCR & Formatter**: Clean up raw scans, fix typos, restore line breaks, and convert unstructured text into Markdown.
-- 🌐 **Multi-Language Translator**: Translate document text into 25+ target languages while preserving structure and formatting.
-- 📊 **Smart Field Extractor**: Automatically parse and extract financial figures, key dates, signees, invoice numbers, and legal clauses into structured JSON tables.
-
----
-
-### 🎧 Audio Feedback & Spotify-Inspired UX
-- 🎨 **Dark-Mode Studio Aesthetic**: Polished UI with sleek zinc colors (`#09090b`), playlist-styled tool navigation, tab filters, and interactive media control bars.
-- 🔊 **Web Audio API Engine**: Micro-sound effects for interactive feedback during file uploads, button clicks, tool switches, and completion celebrations.
-- 🎉 **Confetti Celebrations**: Animated canvas confetti upon successfully compiling or processing documents.
-
----
-
-## 🛠️ Workspace Tools Overview
-
-| Tool Name | Category | Badge | Primary Function |
-| :--- | :--- | :---: | :--- |
-| **Merge PDF** | Popular | `POPULAR` | Combine multiple PDFs in custom order |
-| **Split PDF** | Popular | `FAST` | Separate pages or extract custom page ranges |
-| **Organize & Rotate** | Popular | `POPULAR` | Visual grid editor to reorder, rotate, delete pages |
-| **Executive Summary** | Read & AI | `POPULAR` | AI brief, key takeaways, action items & reading time |
-| **Document Search & Q&A** | Read & AI | - | Conversational chat grounded in document text |
-| **OCR Text Formatter** | Read & AI | `NEW` | Digitize raw scans into structured Markdown |
-| **Document Translator** | Read & AI | - | Translate PDF content into 25+ languages |
-| **Extract Key Data** | Read & AI | `NEW` | Extract financial totals, dates, signees into tables |
-| **Add Watermark** | Edit | - | Apply text watermarks with angle and opacity control |
-| **Remove Watermark** | Edit | `NEW` | Brush & box canvas masking to erase stamps |
-| **Add Page Numbers** | Edit | - | Insert customizable page numbers with positioning |
-| **Edit & Sign PDF** | Edit | - | Add signatures, text overlays, and annotations |
-| **PDF to Images** | Convert | - | Export every page into high-resolution PNGs |
-| **Images to PDF** | Convert | `FAST` | Convert photos and PNG scans into PDF files |
-| **Protect PDF** | Security | - | Encrypt PDF files with digital password protection |
-| **Compress PDF** | Security | - | Optimize and compress PDF file size |
-
----
-
-## 🏗️ Tech Stack & Architecture
-
-```
-                               ┌────────────────────────────────────────────────────────┐
-                               │                    React 19 Web UI                     │
-                               │   (Tailwind CSS v4 • Motion • Lucide • Web Audio)      │
-                               └───────────────────────────┬────────────────────────────┘
-                                                           │
-                                ┌──────────────────────────┴──────────────────────────┐
-                                │                                                     │
-                  ┌─────────────▼─────────────┐                         ┌─────────────▼─────────────┐
-                  │   Client PDF Processing   │                         │   Express Backend API     │
-                  │  (pdf-lib & pdfjs-dist)   │                         │   (server.ts / Node.js)   │
-                  └───────────────────────────┘                         └─────────────┬─────────────┘
-                                                                                      │
-                                                                        ┌─────────────▼─────────────┐
-                                                                        │   Google Gemini 3.6 AI    │
-                                                                        │   (@google/genai SDK)     │
-                                                                        └───────────────────────────┘
+```powershell
+cd frontend
+npm install
+npm run dev
 ```
 
-### Stack Components
-
-- **Frontend**: React 19, TypeScript 5.8, Vite 6, Tailwind CSS 4, Motion (Framer Motion 12)
-- **PDF Engine**: `pdf-lib` (creating/modifying PDFs), `pdfjs-dist` (parsing & rendering PDF page canvases)
-- **AI SDK**: `@google/genai` (Google Gemini 3.6 Flash)
-- **Server Middleware**: Express 4, Vite Middleware Mode, `tsx` Node runtime
-- **UX & FX**: Web Audio API sound generator, `canvas-confetti`
+The frontend will run at the URL shown in your terminal (typically `http://localhost:3000`).
 
 ---
 
-## 📁 Project Structure
+## 2. Backend Setup (FastAPI + Python)
 
+```powershell
+cd backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload
 ```
-easy-pdf/
-├── .env.example              # Sample environment variables configuration
-├── index.html                # HTML5 entrypoint with metadata and title
-├── package.json              # Dependencies and script definitions
-├── server.ts                 # Express backend server with Gemini AI API endpoints
-├── tsconfig.json             # TypeScript compiler settings
-├── vite.config.ts            # Vite build configuration with Tailwind plugin
-├── backend/                  # Optional Python FastAPI alternative backend
-│   ├── app/
-│   │   ├── main.py           # FastAPI entrypoint
-│   │   ├── core/config.py    # App settings & environment config
-│   │   └── services/         # Gemini AI provider services
-│   └── requirements.txt
-└── src/
-    ├── App.tsx               # Main application component & layout state
-    ├── index.css             # Base CSS styles & custom scrollbars
-    ├── main.tsx              # React DOM render entrypoint
-    ├── types.ts              # Global TypeScript interfaces & data contracts
-    ├── components/
-    │   ├── SpotifyHeader.tsx     # Header bar with search & quick actions
-    │   ├── SpotifySidebar.tsx    # Sidebar navigation & tool filter playlists
-    │   ├── SpotifyPlayerBar.tsx  # Bottom audio player status bar
-    │   ├── ToolGrid.tsx          # Workspace tool cards grid
-    │   └── workspaces/
-    │       ├── AiDocumentWorkspace.tsx        # Summarizer, Chat, OCR & Extract UI
-    │       ├── AnnotateWorkspace.tsx          # Draw & sign PDF workspace
-    │       ├── ConvertWorkspace.tsx           # Image ⇄ PDF conversion workspace
-    │       ├── MergeWorkspace.tsx             # Multi-file PDF merge workspace
-    │       ├── OrganizeWorkspace.tsx          # Page grid reordering & rotation
-    │       ├── RemoveWatermarkWorkspace.tsx   # Canvas eraser mask workspace
-    │       └── WatermarkWorkspace.tsx         # Custom text watermark workspace
-    ├── data/
-    │   └── toolsData.ts      # Tools registry configuration
-    └── lib/
-        ├── audio.ts          # Web Audio API sound synthesizer
-        └── pdfEngine.ts       # Client-side pdf-lib & pdfjs processing functions
+
+* Backend API URL: `http://127.0.0.1:8000`
+* FastAPI Swagger Docs URL: `http://127.0.0.1:8000/docs`
+
+---
+
+## 3. Running Both (2 Terminals Required)
+
+To run the complete application, open two separate PowerShell terminals:
+
+### Terminal 1 (Frontend):
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+### Terminal 2 (Backend):
+
+```powershell
+cd backend
+.\venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload
 ```
 
 ---
 
-## 🚀 Getting Started
+## 4. Troubleshooting
 
-### Prerequisites
-
-- **Node.js**: `v20.0.0` or higher recommended
-- **npm**: `v9.0.0` or higher (or `bun` / `pnpm`)
-
----
-
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/neeraj181-dot/Editorpdf.git
-   cd Editorpdf
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Configure Environment Variables:**
-   Create a `.env` file in the root directory:
-   ```bash
-   cp .env.example .env
-   ```
-
-   Add your Google Gemini API key:
-   ```env
-   # Required for AI Summaries, Chat, OCR, and Extraction features
-   AI_API_KEY="your_gemini_api_key_here"
-
-   # Optional Settings
-   PORT=3000
-   APP_URL="http://localhost:3000"
-   AI_MODEL_NAME="gemini-3.6-flash"
-   ```
-
-> 💡 **Tip:** You can obtain a free Gemini API key from [Google AI Studio](https://aistudio.google.com/).
-
----
-
-### Running the Application
-
-| Command | Environment | Description |
-| :--- | :--- | :--- |
-| `npm run dev` | **Development** | Starts Express server with integrated Vite middleware at `http://localhost:3000` |
-| `npm run dev:frontend` | **Frontend Only** | Runs Vite dev server standalone without backend AI API endpoints |
-| `npm run dev:express` | **Backend Only** | Starts Express server via `tsx server.ts` |
-| `npm run lint` | **Validation** | Executes TypeScript type checking (`tsc --noEmit`) |
-| `npm run build` | **Production** | Compiles client assets into `dist/` bundle |
-| `npm start` | **Production** | Launches compiled production server |
-
----
-
-## 🔌 AI API Endpoints
-
-The Express server (`server.ts`) exposes several endpoints powered by Google Gemini:
-
-### 1. `POST /api/ai/summarize`
-Generates structured briefs, bullet points, action items, category, and reading estimates.
-
-**Request Payload:**
-```json
-{
-  "pdfText": "Full text content extracted from document...",
-  "fileName": "Annual_Report.pdf",
-  "pagesCount": 12
-}
-```
-
-**Response Payload:**
-```json
-{
-  "title": "2025 Financial & Q4 Growth Report",
-  "summary": "The document outlines record revenue growth across cloud software divisions...",
-  "keyPoints": [
-    "Q4 Revenue increased by 24% year-over-year.",
-    "Cloud infrastructure operations expanded into 3 new regions."
-  ],
-  "actionItems": [
-    "Schedule board review meeting for Q1 budget allocation."
-  ],
-  "documentCategory": "Financial Report",
-  "readingTimeMinutes": 4,
-  "keyTopics": ["Revenue", "Cloud", "Growth", "Q4"]
-}
-```
-
----
-
-### 2. `POST /api/ai/chat`
-Answers questions about document content with conversational grounding.
-
-**Request Payload:**
-```json
-{
-  "message": "What was the total net revenue mentioned in Q3?",
-  "pdfContext": "Document full text string...",
-  "history": [
-    { "role": "user", "text": "Can you summarize section 2?" },
-    { "role": "assistant", "text": "Section 2 details operational expenditure..." }
-  ]
-}
-```
-
-**Response Payload:**
-```json
-{
-  "text": "According to page 4, the total net revenue for Q3 was $4.2 million, representing a 14% increase."
-}
-```
-
----
-
-### 3. `POST /api/ai/smart-extract`
-Extracts financial figures, contract dates, signees, invoice metadata, and legal clauses.
-
-**Request Payload:**
-```json
-{
-  "pdfText": "Invoice #98214 Date: 2025-10-15 Amount Due: $1,450.00 ..."
-}
-```
-
-**Response Payload:**
-```json
-{
-  "fields": [
-    { "label": "Invoice Number", "value": "98214", "category": "financial", "confidence": 98 },
-    { "label": "Invoice Date", "value": "2025-10-15", "category": "date", "confidence": 99 },
-    { "label": "Amount Due", "value": "$1,450.00", "category": "financial", "confidence": 96 }
-  ]
-}
-```
-
----
-
-### 4. `POST /api/ai/ocr-enhance`
-Cleans up raw OCR scans into structured Markdown.
-
-**Request Payload:**
-```json
-{
-  "rawText": "Raw noisy text with broken lines...",
-  "imageBase64": "data:image/png;base64,..."
-}
-```
-
----
-
-### 5. `POST /api/ai/translate`
-Translates text into 25+ target languages while preserving structure.
-
-**Request Payload:**
-```json
-{
-  "pdfText": "Text to translate...",
-  "targetLanguage": "Spanish"
-}
-```
-
----
-
-## 🛡️ Security & Privacy Architecture
-
-- **Zero Cloud File Storage**: Core PDF manipulations (Merge, Split, Rotate, Watermark, Page Numbering) are performed using `pdf-lib` in local memory (`ArrayBuffer`). Files are never uploaded or persisted on disk.
-- **In-Memory AI Context Processing**: Document text submitted to Google Gemini API endpoints is processed in-memory and transiently returned without database storage.
-- **Client-Side Rendering**: Page thumbnails and previews are rendered locally using `pdfjs-dist` HTML5 Canvas rendering.
-
----
-
-## ❓ Troubleshooting & FAQ
-
-<details>
-<summary><b>Q: AI features display "AI_API_KEY environment variable is not set" error.</b></summary>
-
-**Solution:** Ensure you created a `.env` file in the project root containing your valid Google Gemini API key:
-```env
-AI_API_KEY="AIzaSy..."
-```
-Then restart the server using `npm run dev`.
-</details>
-
-<details>
-<summary><b>Q: Large PDF files (100MB+) take time to open.</b></summary>
-
-**Solution:** `pdfjs-dist` renders thumbnails page-by-page. For large documents, wait a few seconds for canvas worker rendering to finish, or process pages in smaller batches.
-</details>
-
-<details>
-<summary><b>Q: Port 3000 is already in use.</b></summary>
-
-**Solution:** Change the `PORT` variable in your `.env` file:
-```env
-PORT=3001
-```
-</details>
-
----
-
-## 📄 License
-
-This project is licensed under the **Apache-2.0 License**. See [LICENSE](LICENSE) for details.
-
----
-
-<div align="center">
-
-Made with ❤️ using **React 19**, **Vite**, **TypeScript**, and **Google Gemini AI**.
-
-</div>
+* **Script Execution Error in PowerShell**: If `.ps1` execution is disabled, run:
+  ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+  ```
+* **Port Conflict**: If port 8000 is in use, specify a custom port for uvicorn:
+  ```powershell
+  uvicorn app.main:app --reload --port 8080
+  ```

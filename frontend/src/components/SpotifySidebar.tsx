@@ -24,6 +24,7 @@ interface SpotifySidebarProps {
   onSelectFile: (id: string) => void;
   onRemoveFile: (id: string) => void;
   onUploadClick: () => void;
+  onOpenFilePicker: () => void;
   activeView: string;
   setActiveView: (view: string) => void;
   onSelectPresetPipeline: (preset: string) => void;
@@ -37,6 +38,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
   onSelectFile,
   onRemoveFile,
   onUploadClick,
+  onOpenFilePicker,
   activeView,
   setActiveView,
   onSelectPresetPipeline,
@@ -142,7 +144,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
           <button
             onClick={() => {
               soundEffects.playClick();
-              onUploadClick();
+              onOpenFilePicker();
             }}
             className="p-1.5 rounded-lg hover:bg-zinc-800 hover:text-zinc-100 transition-colors text-zinc-400"
             title="Upload new PDF file"
