@@ -1,4 +1,4 @@
-# XPDF
+# EasyPDF
 
 ## 1. Frontend Setup (React + Vite)
 
