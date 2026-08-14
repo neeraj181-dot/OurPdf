@@ -1,6 +1,6 @@
 # PDFora
 
-EasyPDF is a privacy-focused PDF management application for working with PDF files directly through a simple web interface. It provides tools for common PDF operations such as merging, splitting, watermarking, page numbering, and other document processing tasks.
+PDForais a privacy-focused PDF management application for working with PDF files directly through a simple web interface. It provides tools for common PDF operations such as merging, splitting, watermarking, page numbering, and other document processing tasks.
 
 The application uses a React + Vite frontend and a FastAPI + Python backend.
 
