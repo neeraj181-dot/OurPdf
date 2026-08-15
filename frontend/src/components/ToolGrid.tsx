@@ -17,6 +17,19 @@ import {
   FileArchive,
   ArrowRight,
   Eraser,
+  FileCode,
+  FolderOpen,
+  Type,
+  Edit3,
+  RotateCw,
+  Code,
+  Brush,
+  FileSignature,
+  ShieldAlert,
+  Wrench,
+  Sparkles,
+  ShieldCheck,
+  FileCheck,
 } from "lucide-react";
 import { PDFTool } from "../types";
 import { soundEffects } from "../lib/audio";
@@ -36,6 +49,10 @@ export const ToolGrid: React.FC<ToolGridProps> = ({
   const renderIcon = (name: string) => {
     const iconClass = "w-5 h-5 text-zinc-200 group-hover:text-[#1DB954] transition-colors";
     switch (name) {
+      case "FolderOpen":
+        return <FolderOpen className={iconClass} />;
+      case "Type":
+        return <Type className={iconClass} />;
       case "Layers":
         return <Layers className={iconClass} />;
       case "Scissors":
@@ -66,8 +83,30 @@ export const ToolGrid: React.FC<ToolGridProps> = ({
         return <Lock className={iconClass} />;
       case "FileArchive":
         return <FileArchive className={iconClass} />;
+      case "FileCode":
+        return <FileCode className={iconClass} />;
       case "Eraser":
         return <Eraser className={iconClass} />;
+      case "Edit3":
+        return <Edit3 className={iconClass} />;
+      case "RotateCw":
+        return <RotateCw className={iconClass} />;
+      case "Code":
+        return <Code className={iconClass} />;
+      case "Brush":
+        return <Brush className={iconClass} />;
+      case "FileSignature":
+        return <FileSignature className={iconClass} />;
+      case "ShieldAlert":
+        return <ShieldAlert className={iconClass} />;
+      case "Wrench":
+        return <Wrench className={iconClass} />;
+      case "Sparkles":
+        return <Sparkles className={iconClass} />;
+      case "ShieldCheck":
+        return <ShieldCheck className={iconClass} />;
+      case "FileCheck":
+        return <FileCheck className={iconClass} />;
       default:
         return <FileText className={iconClass} />;
     }

@@ -47,7 +47,8 @@ def chat_with_pdf(
     request: ChatRequest,
     service: AIService = Depends(get_ai_service),
 ) -> ChatResponse:
-    if not request.message:
+    user_msg = (request.message or "").strip()
+    if not user_msg:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Message is required",
@@ -55,9 +56,15 @@ def chat_with_pdf(
     try:
         return service.chat(request)
     except Exception as e:
+        error_msg = str(e) or "Failed to process chat"
+        if "AI_API_KEY" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="AI service is not configured. Please set AI_API_KEY in backend/.env.",
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e) or "Failed to process chat",
+            detail=error_msg,
         )
 
 

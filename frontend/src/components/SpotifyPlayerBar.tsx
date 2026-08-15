@@ -6,7 +6,8 @@ import {
   Sparkles,
   CheckCircle2,
   ArrowRight,
-  FileCheck,
+  FolderPlus,
+  Check,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { PDFFileItem } from "../types";
@@ -21,6 +22,8 @@ interface SpotifyPlayerBarProps {
   downloadFileName: string;
   onDownloadClick: () => void;
   onReset: () => void;
+  onSaveToCloud?: () => void;
+  isSavedToCloud?: boolean;
 }
 
 export const SpotifyPlayerBar: React.FC<SpotifyPlayerBarProps> = ({
@@ -32,6 +35,8 @@ export const SpotifyPlayerBar: React.FC<SpotifyPlayerBarProps> = ({
   downloadFileName,
   onDownloadClick,
   onReset,
+  onSaveToCloud,
+  isSavedToCloud,
 }) => {
   const triggerConfetti = () => {
     confetti({
@@ -137,21 +142,48 @@ export const SpotifyPlayerBar: React.FC<SpotifyPlayerBarProps> = ({
         </p>
       </div>
 
-      {/* Right: Output Download Button */}
-      <div className="flex items-center justify-end gap-3 w-1/4 min-w-[200px]">
+      {/* Right: Output Actions (Save to My Documents + Download) */}
+      <div className="flex items-center justify-end gap-2.5 w-1/3 min-w-[240px]">
         {downloadBytes ? (
-          <button
-            onClick={() => {
-              soundEffects.playSuccess();
-              triggerConfetti();
-              onDownloadClick();
-            }}
-            className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-zinc-900 font-semibold text-xs px-4 py-2 rounded-lg transition-colors cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Download PDF</span>
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#1DB954]" />
-          </button>
+          <>
+            {onSaveToCloud && (
+              <button
+                onClick={onSaveToCloud}
+                disabled={isSavedToCloud}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  isSavedToCloud
+                    ? "bg-emerald-950/80 text-emerald-300 border-emerald-500/40 cursor-default"
+                    : "bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border-zinc-700"
+                }`}
+                title="Save to My Documents"
+              >
+                {isSavedToCloud ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#1DB954]" />
+                    <span>Saved</span>
+                  </>
+                ) : (
+                  <>
+                    <FolderPlus className="w-3.5 h-3.5 text-[#1DB954]" />
+                    <span>Save to Cloud</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                soundEffects.playSuccess();
+                triggerConfetti();
+                onDownloadClick();
+              }}
+              className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-zinc-900 font-semibold text-xs px-4 py-2 rounded-lg transition-colors cursor-pointer shadow-md"
+            >
+              <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Download PDF</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#1DB954]" />
+            </button>
+          </>
         ) : (
           <div className="text-right">
             <p className="text-[11px] text-zinc-400 font-normal">Client-Side Processing</p>

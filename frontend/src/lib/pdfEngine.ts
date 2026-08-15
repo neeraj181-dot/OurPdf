@@ -248,27 +248,58 @@ export async function addPageNumbers(
 }
 
 /**
- * Converts image files (JPG, PNG) into a single PDF Uint8Array
+ * Converts image files (JPG, PNG, WebP) into a single PDF Uint8Array
  */
 export async function imagesToPDF(imageFiles: File[]): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
 
   for (const imgFile of imageFiles) {
-    const arrayBuffer = await fileToArrayBuffer(imgFile);
-    let image;
-    if (imgFile.type.includes("png")) {
-      image = await pdfDoc.embedPng(arrayBuffer);
-    } else {
-      image = await pdfDoc.embedJpg(arrayBuffer);
+    let embeddedImage = null;
+    try {
+      const arrayBuffer = await fileToArrayBuffer(imgFile);
+      if (imgFile.type.includes("png")) {
+        embeddedImage = await pdfDoc.embedPng(arrayBuffer);
+      } else if (imgFile.type.includes("jpeg") || imgFile.type.includes("jpg")) {
+        embeddedImage = await pdfDoc.embedJpg(arrayBuffer);
+      } else {
+        throw new Error("Needs canvas conversion");
+      }
+    } catch {
+      // Robust fallback for WebP, BMP, and custom images via Canvas
+      try {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(imgFile);
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = objectUrl;
+        });
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || img.width || 800;
+        canvas.height = img.naturalHeight || img.height || 600;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+          const base64 = dataUrl.split(",")[1];
+          const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+          embeddedImage = await pdfDoc.embedJpg(bytes);
+        }
+        URL.revokeObjectURL(objectUrl);
+      } catch (fallbackErr) {
+        console.warn(`Could not embed image ${imgFile.name}:`, fallbackErr);
+      }
     }
 
-    const page = pdfDoc.addPage([image.width, image.height]);
-    page.drawImage(image, {
-      x: 0,
-      y: 0,
-      width: image.width,
-      height: image.height,
-    });
+    if (embeddedImage) {
+      const page = pdfDoc.addPage([embeddedImage.width, embeddedImage.height]);
+      page.drawImage(embeddedImage, {
+        x: 0,
+        y: 0,
+        width: embeddedImage.width,
+        height: embeddedImage.height,
+      });
+    }
   }
 
   return await pdfDoc.save();
@@ -318,4 +349,97 @@ export function downloadPdfBytes(bytes: Uint8Array, filename: string) {
   setTimeout(() => {
     URL.revokeObjectURL(url);
   }, 1000);
+}
+
+export interface CompressOptions {
+  level: "low" | "balanced" | "high";
+}
+
+/**
+ * Compresses a PDF client-side by re-encoding pages and optimizing image streams.
+ */
+export async function compressPDF(
+  file: File,
+  options: CompressOptions
+): Promise<{
+  bytes: Uint8Array;
+  originalSizeBytes: number;
+  compressedSizeBytes: number;
+  savedPercentage: number;
+}> {
+  const originalBuffer = await fileToArrayBuffer(file);
+  const originalSizeBytes = file.size;
+
+  const srcPdf = await PDFDocument.load(originalBuffer, { ignoreEncryption: true });
+  const compressedPdf = await PDFDocument.create();
+
+  const pageIndices = srcPdf.getPageIndices();
+  const copiedPages = await compressedPdf.copyPages(srcPdf, pageIndices);
+  copiedPages.forEach((page) => compressedPdf.addPage(page));
+
+  const bytes = await compressedPdf.save({
+    useObjectStreams: true,
+    addDefaultPage: false,
+  });
+
+  let compressedSizeBytes = bytes.byteLength;
+
+  if (options.level === "high" || options.level === "balanced") {
+    try {
+      const scale = options.level === "high" ? 1.0 : 1.25;
+      const quality = options.level === "high" ? 0.6 : 0.75;
+
+      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(originalBuffer) });
+      const pdfDoc = await loadingTask.promise;
+      const numPages = pdfDoc.numPages;
+      const rasterPdf = await PDFDocument.create();
+
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          await page.render({ canvasContext: ctx, viewport } as any).promise;
+          const imgDataUrl = canvas.toDataURL("image/jpeg", quality);
+          const base64 = imgDataUrl.split(",")[1];
+          const imgBytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+          const embeddedImg = await rasterPdf.embedJpg(imgBytes);
+
+          const newPage = rasterPdf.addPage([viewport.width / scale, viewport.height / scale]);
+          newPage.drawImage(embeddedImg, {
+            x: 0,
+            y: 0,
+            width: viewport.width / scale,
+            height: viewport.height / scale,
+          });
+        }
+      }
+
+      const rasterBytes = await rasterPdf.save({ useObjectStreams: true });
+      if (rasterBytes.byteLength < compressedSizeBytes) {
+        compressedSizeBytes = rasterBytes.byteLength;
+        const savedPct = Math.max(0, parseFloat((((originalSizeBytes - compressedSizeBytes) / originalSizeBytes) * 100).toFixed(1)));
+        return {
+          bytes: rasterBytes,
+          originalSizeBytes,
+          compressedSizeBytes,
+          savedPercentage: savedPct,
+        };
+      }
+    } catch (err) {
+      console.warn("Raster compression fallback warning:", err);
+    }
+  }
+
+  const savedPercentage = Math.max(0, parseFloat((((originalSizeBytes - compressedSizeBytes) / originalSizeBytes) * 100).toFixed(1)));
+
+  return {
+    bytes,
+    originalSizeBytes,
+    compressedSizeBytes,
+    savedPercentage,
+  };
 }
