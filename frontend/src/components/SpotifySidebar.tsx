@@ -16,6 +16,7 @@ import {
   Eraser,
 } from "lucide-react";
 import { PDFFileItem } from "../types";
+import { UserProfile } from "../lib/api";
 import { soundEffects } from "../lib/audio";
 
 interface SpotifySidebarProps {
@@ -30,6 +31,9 @@ interface SpotifySidebarProps {
   onSelectPresetPipeline: (preset: string) => void;
   soundEnabled: boolean;
   setSoundEnabled: (val: boolean) => void;
+  user: UserProfile | null;
+  onOpenAuthModal: (mode?: "login" | "register") => void;
+  onLogout: () => void;
 }
 
 export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
@@ -44,6 +48,9 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
   onSelectPresetPipeline,
   soundEnabled,
   setSoundEnabled,
+  user,
+  onOpenAuthModal,
+  onLogout,
 }) => {
   return (
     <aside className="w-64 bg-[#09090b] text-zinc-400 flex flex-col h-full gap-2 p-2 select-none shrink-0 font-sans">
@@ -116,16 +123,31 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
           <button
             onClick={() => {
               soundEffects.playClick();
-              setActiveView("ai-lab");
+              setActiveView("editor");
             }}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-              activeView === "ai-lab"
+              activeView === "editor"
                 ? "bg-zinc-800 text-zinc-100"
                 : "hover:text-zinc-200 hover:bg-zinc-800/50"
             }`}
           >
-            <FileSearch className={`w-4 h-4 ${activeView === "ai-lab" ? "text-[#1DB954]" : "text-zinc-400"}`} />
-            Smart Document Analysis
+            <FileText className={`w-4 h-4 ${activeView === "editor" ? "text-[#1DB954]" : "text-zinc-400"}`} />
+            Create & Edit PDF
+          </button>
+
+          <button
+            onClick={() => {
+              soundEffects.playClick();
+              setActiveView("my-docs");
+            }}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+              activeView === "my-docs"
+                ? "bg-zinc-800 text-zinc-100"
+                : "hover:text-zinc-200 hover:bg-zinc-800/50"
+            }`}
+          >
+            <FolderOpen className={`w-4 h-4 ${activeView === "my-docs" ? "text-[#1DB954]" : "text-zinc-400"}`} />
+            My Documents
           </button>
         </nav>
       </div>
@@ -292,6 +314,55 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* User Account Section */}
+      <div className="bg-[#121215] rounded-xl p-3 border border-zinc-800/80 flex items-center justify-between text-xs">
+        {user ? (
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-[#1DB954] text-black font-extrabold flex items-center justify-center text-xs shrink-0">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <span className="font-bold text-white block truncate">{user.name}</span>
+                <span className="text-[10px] text-zinc-400 block truncate">{user.email}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onLogout();
+              }}
+              className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-rose-400 text-[10px] font-bold"
+              title="Sign Out"
+            >
+              Logout
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5 w-full">
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onOpenAuthModal("login");
+              }}
+              className="w-full flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold py-2 rounded-lg text-xs transition-colors cursor-pointer shadow-md"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </button>
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onOpenAuthModal("register");
+              }}
+              className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold py-1.5 rounded-lg text-xs transition-colors cursor-pointer border border-zinc-700"
+            >
+              <span>Create Free Account</span>
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );

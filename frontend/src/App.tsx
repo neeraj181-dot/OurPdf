@@ -30,11 +30,35 @@ import { AiDocumentWorkspace } from "./components/workspaces/AiDocumentWorkspace
 import { ConvertWorkspace } from "./components/workspaces/ConvertWorkspace";
 import { AnnotateWorkspace } from "./components/workspaces/AnnotateWorkspace";
 import { RemoveWatermarkWorkspace } from "./components/workspaces/RemoveWatermarkWorkspace";
+import { CreateEditWorkspace } from "./components/workspaces/CreateEditWorkspace";
+import { CompressWorkspace } from "./components/workspaces/CompressWorkspace";
+import { WordWorkspace } from "./components/workspaces/WordWorkspace";
+import { MyDocumentsWorkspace } from "./components/workspaces/MyDocumentsWorkspace";
+import { SecuritySearchWorkspace } from "./components/workspaces/SecuritySearchWorkspace";
+import { AuthModal } from "./components/AuthModal";
+import { UserProfile, apiGetMe, apiLogout, getStoredToken, apiSaveDocument } from "./lib/api";
 
 export default function App() {
+  // User Authentication State
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<"login" | "register">("login");
+  const [authModalSubtitle, setAuthModalSubtitle] = useState<string | undefined>(undefined);
+  const [isSavedToCloud, setIsSavedToCloud] = useState(false);
+  const [cloudNotification, setCloudNotification] = useState<string | null>(null);
+
   // Loaded PDFs state
   const [files, setFiles] = useState<PDFFileItem[]>([]);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
+
+  // Load user on mount if token exists
+  useEffect(() => {
+    if (getStoredToken()) {
+      apiGetMe()
+        .then((u) => setUser(u))
+        .catch(() => apiLogout());
+    }
+  }, []);
 
   // Navigation & Search State
   const [activeView, setActiveView] = useState<string>("home"); // "home" | "browse" | "ai-lab"
@@ -129,9 +153,7 @@ export default function App() {
       tool.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory =
       selectedCategory === "all" ||
-      tool.category === selectedCategory ||
-      (selectedCategory === "popular" && tool.badge === "POPULAR") ||
-      (selectedCategory === "read" && tool.category === "read");
+      tool.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
@@ -270,6 +292,42 @@ export default function App() {
     }
   };
 
+  const handleSaveToMyDocuments = async (
+    fileOrBlobOrBytes: File | Blob | Uint8Array,
+    filename: string,
+    operation = "process"
+  ) => {
+    if (!user) {
+      soundEffects.playClick();
+      setAuthModalMode("login");
+      setAuthModalSubtitle("Sign in to save this document to your cloud account.");
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    soundEffects.playClick();
+    try {
+      let blob: Blob;
+      if (fileOrBlobOrBytes instanceof Uint8Array) {
+        blob = new Blob([fileOrBlobOrBytes], {
+          type: filename.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png",
+        });
+      } else if (fileOrBlobOrBytes instanceof File || fileOrBlobOrBytes instanceof Blob) {
+        blob = fileOrBlobOrBytes;
+      } else {
+        blob = new Blob([fileOrBlobOrBytes]);
+      }
+
+      await apiSaveDocument(blob, filename, operation);
+      soundEffects.playSuccess();
+      setIsSavedToCloud(true);
+      setCloudNotification(`"${filename}" saved to My Documents!`);
+      setTimeout(() => setCloudNotification(null), 4000);
+    } catch (err: any) {
+      alert(`Failed to save document: ${err?.message || "Error saving to cloud storage."}`);
+    }
+  };
+
   // Global Drag Events
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -343,6 +401,17 @@ export default function App() {
           onSelectPresetPipeline={handleSelectPresetPipeline}
           soundEnabled={soundEnabled}
           setSoundEnabled={setSoundEnabled}
+          user={user}
+          onOpenAuthModal={(mode) => {
+            setAuthModalMode(mode || "login");
+            setAuthModalSubtitle(undefined);
+            setIsAuthModalOpen(true);
+          }}
+          onLogout={() => {
+            apiLogout();
+            setUser(null);
+            soundEffects.playClick();
+          }}
         />
 
         {/* Right Stage Main Content */}
@@ -362,45 +431,68 @@ export default function App() {
               setActiveToolId(null);
               setDownloadBytes(null);
             }}
+            user={user}
+            onOpenAuthModal={(mode) => {
+              setAuthModalMode(mode || "login");
+              setAuthModalSubtitle(undefined);
+              setIsAuthModalOpen(true);
+            }}
+            onLogout={() => {
+              apiLogout();
+              setUser(null);
+              soundEffects.playClick();
+            }}
           />
 
           {/* Dynamic Scrollable Stage View */}
           <main className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-            {/* VIEW 1: HOME BROWSE GRID */}
-            {!activeToolId && (
-              <div className="flex flex-col gap-6">
-                {/* Clean Feature Header */}
+            {activeView === "my-docs" ? (
+              <MyDocumentsWorkspace
+                user={user}
+                onOpenAuthModal={(mode) => {
+                  setAuthModalMode(mode || "login");
+                  setAuthModalSubtitle(undefined);
+                  setIsAuthModalOpen(true);
+                }}
+                onOpenDocument={(file) => handleFileUpload([file])}
+              />
+            ) : (
+              <>
+                {/* VIEW 1: HOME BROWSE GRID */}
+                {!activeToolId && (
+                  <div className="flex flex-col gap-6">
+                    {/* Clean Feature Header */}
                 <div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-6">
                   <div className="max-w-xl text-center sm:text-left">
                     <div className="flex items-center justify-center sm:justify-start gap-2 text-xs font-medium text-[#1DB954] uppercase tracking-wider">
                       <FileText className="w-4 h-4 text-[#1DB954]" />
-                      <span>Easy PDF Workspace</span>
+                      <span>Easy PDF Document Processing</span>
                     </div>
                     <h2 className="text-2xl font-bold text-zinc-100 mt-1 tracking-tight leading-snug">
-                      Professional Document Processing Engine
+                      Create, Edit & Organize PDF Documents
                     </h2>
                     <p className="text-xs text-zinc-400 mt-2 leading-relaxed font-normal">
-                      Merge PDFs, reorganize pages, apply watermarks, convert file formats, and analyze document contents with client-side processing.
+                      Create new documents, edit text, insert images, organize pages, merge PDFs, optimize, and convert documents in one unified workspace.
                     </p>
 
                     <div className="flex items-center justify-center sm:justify-start gap-3 mt-4">
                       <button
                         onClick={() => {
                           setActiveView("home");
-                          setActiveToolId("merge");
+                          setActiveToolId("create-pdf");
                         }}
-                        className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-5 py-2.5 rounded-lg transition-colors cursor-pointer"
+                        className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors cursor-pointer shadow-md"
                       >
                         <Plus className="w-4 h-4 stroke-[2.5]" />
-                        <span>Open PDF File</span>
+                        <span>Create & Edit PDF</span>
                       </button>
 
                       <button
-                        onClick={() => handleSelectTool("merge")}
+                        onClick={() => handleSelectTool("import-pdf")}
                         className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700/80 text-zinc-200 font-medium text-xs px-4 py-2.5 rounded-lg border border-zinc-700/60 transition-colors cursor-pointer"
                       >
-                        <Layers className="w-4 h-4 text-[#1DB954]" />
-                        <span>Quick Merge</span>
+                        <FileText className="w-4 h-4 text-[#1DB954]" />
+                        <span>Import PDF File</span>
                       </button>
                     </div>
                   </div>
@@ -444,22 +536,26 @@ export default function App() {
                     files={files}
                     onAddFilesClick={() => fileInputRef.current?.click()}
                     onRemoveFile={handleRemoveFile}
-                    onReorderFiles={(newFiles) => setFiles(newFiles)}
+                    onReorderFiles={(newOrder) => setFiles(newOrder)}
                     onRunMerge={handleRunMerge}
                     isProcessing={isProcessing}
                   />
                 )}
 
-                {/* TOOL 2: ORGANIZE */}
-                {activeToolId === "organize" && activeFile && (
-                  <OrganizeWorkspace
-                    activeFile={activeFile}
-                    onExport={handleRunOrganize}
-                    isProcessing={isProcessing}
-                  />
-                )}
+                {/* TOOL 2: ORGANIZE & ROTATE & EXTRACT & SPLIT */}
+                {(activeToolId === "organize" ||
+                  activeToolId === "rotate" ||
+                  activeToolId === "extract" ||
+                  activeToolId === "split") &&
+                  activeFile && (
+                    <OrganizeWorkspace
+                      activeFile={activeFile}
+                      onExport={handleRunOrganize}
+                      isProcessing={isProcessing}
+                    />
+                  )}
 
-                {/* TOOL 3: WATERMARK */}
+                {/* TOOL 3: WATERMARK & REMOVE WATERMARK */}
                 {activeToolId === "watermark" && activeFile && (
                   <WatermarkWorkspace
                     activeFile={activeFile}
@@ -468,7 +564,6 @@ export default function App() {
                   />
                 )}
 
-                {/* TOOL 3.5: REMOVE WATERMARK */}
                 {activeToolId === "remove-watermark" && (
                   <RemoveWatermarkWorkspace
                     activeFile={activeFile}
@@ -476,22 +571,29 @@ export default function App() {
                   />
                 )}
 
-                {/* TOOL 4: AI DOCUMENT HUB */}
-                {(activeToolId === "ai-summary" ||
-                  activeToolId === "ai-chat" ||
-                  activeToolId === "ai-ocr" ||
-                  activeToolId === "ai-translate" ||
-                  activeToolId === "ai-extract") &&
-                  activeFile && (
-                    <AiDocumentWorkspace
-                      activeFile={activeFile}
-                      activeAiTab={activeAiTab}
-                      setActiveAiTab={setActiveAiTab}
-                    />
-                  )}
+                {/* TOOL 4: CREATE & EDIT PDF */}
+                {(activeToolId === "create-pdf" ||
+                  activeToolId === "edit-pdf" ||
+                  activeToolId === "import-pdf" ||
+                  activeToolId === "add-text" ||
+                  activeToolId === "insert-image") && (
+                  <CreateEditWorkspace
+                    activeFile={activeFile}
+                    onUploadClick={() => handleSelectTool("merge")}
+                    onOpenFilePicker={() => fileInputRef.current?.click()}
+                    onSelectTool={handleSelectTool}
+                  />
+                )}
 
                 {/* TOOL 5: CONVERT */}
-                {(activeToolId === "pdf-to-img" || activeToolId === "img-to-pdf") && (
+                {(activeToolId === "pdf-to-docx" ||
+                  activeToolId === "pdf-to-png" ||
+                  activeToolId === "pdf-to-jpg" ||
+                  activeToolId === "img-to-pdf" ||
+                  activeToolId === "img-to-svg" ||
+                  activeToolId === "pdf-to-markdown" ||
+                  activeToolId === "pdf-to-pdfa" ||
+                  activeToolId === "html-to-pdf") && (
                   <ConvertWorkspace
                     mode={activeToolId as any}
                     activeFile={activeFile}
@@ -501,9 +603,12 @@ export default function App() {
                 )}
 
                 {/* TOOL 6: ANNOTATE & UTILITIES */}
-                {(activeToolId === "page-numbers" ||
-                  activeToolId === "lock" ||
-                  activeToolId === "compress") &&
+                {(activeToolId === "annotate" ||
+                  activeToolId === "drawing" ||
+                  activeToolId === "sign" ||
+                  activeToolId === "redact" ||
+                  activeToolId === "page-numbers" ||
+                  activeToolId === "lock") &&
                   activeFile && (
                     <AnnotateWorkspace
                       mode={activeToolId as any}
@@ -515,8 +620,55 @@ export default function App() {
                     />
                   )}
 
+                {/* TOOL 7: COMPRESS & REPAIR */}
+                {(activeToolId === "compress" || activeToolId === "repair") && (
+                  <CompressWorkspace
+                    activeFile={activeFile}
+                    onOpenFilePicker={() => fileInputRef.current?.click()}
+                  />
+                )}
+
+                {/* TOOL 8: WORD CONVERSION */}
+                {(activeToolId === "word-to-pdf" || activeToolId === "pdf-to-word") && (
+                  <WordWorkspace
+                    mode={activeToolId as any}
+                    activeFile={activeFile}
+                    onOpenFilePicker={() => fileInputRef.current?.click()}
+                    onOpenInEditor={(html, filename) => {
+                      setActiveToolId("create-pdf");
+                    }}
+                    onSaveToCloud={handleSaveToMyDocuments}
+                  />
+                )}
+
+                {/* TOOL 9: SECURITY & SEARCH */}
+                {(activeToolId === "protect" || activeToolId === "search-pdf") && (
+                  <SecuritySearchWorkspace
+                    mode={activeToolId as any}
+                    activeFile={activeFile}
+                    onOpenFilePicker={() => fileInputRef.current?.click()}
+                  />
+                )}
+
                 {/* Fallback if no file is selected for single-file tools */}
-                {!activeFile && activeToolId !== "merge" && activeToolId !== "img-to-pdf" && activeToolId !== "remove-watermark" && (
+                {!activeFile &&
+                  activeToolId !== "merge" &&
+                  activeToolId !== "img-to-pdf" &&
+                  activeToolId !== "img-to-svg" &&
+                  activeToolId !== "remove-watermark" &&
+                  activeToolId !== "create-pdf" &&
+                  activeToolId !== "edit-pdf" &&
+                  activeToolId !== "compress" &&
+                  activeToolId !== "repair" &&
+                  activeToolId !== "word-to-pdf" &&
+                  activeToolId !== "pdf-to-word" &&
+                  activeToolId !== "html-to-pdf" &&
+                  activeToolId !== "protect" &&
+                  activeToolId !== "search-pdf" &&
+                  activeToolId !== "import-pdf" &&
+                  activeToolId !== "add-text" &&
+                  activeToolId !== "insert-image" &&
+                  activeToolId !== "annotate" && (
                   <div className="text-center py-16 bg-[#18181b] rounded-xl border border-zinc-800 my-6 flex flex-col items-center justify-center gap-3">
                     <div className="w-12 h-12 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
                       <FileText className="w-6 h-6 text-zinc-500" />
@@ -534,6 +686,8 @@ export default function App() {
                   </div>
                 )}
               </div>
+            )}
+            </>
             )}
           </main>
 
@@ -555,9 +709,35 @@ export default function App() {
             onReset={() => {
               setDownloadBytes(null);
             }}
+            onSaveToCloud={() => {
+              if (downloadBytes) {
+                handleSaveToMyDocuments(downloadBytes, downloadFileName, activeToolId || "process");
+              }
+            }}
+            isSavedToCloud={isSavedToCloud}
           />
         </div>
       </div>
+
+      {/* Authentication Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        initialMode={authModalMode}
+        customSubtitle={authModalSubtitle}
+        onSuccess={(u) => {
+          setUser(u);
+          soundEffects.playSuccess();
+        }}
+      />
+
+      {/* Floating Cloud Notification Toast */}
+      {cloudNotification && (
+        <div className="fixed bottom-20 right-8 bg-[#1DB954] text-black font-extrabold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs z-50 border border-white/20 animate-bounce">
+          <CheckCircle2 className="w-4 h-4 text-black shrink-0 stroke-[2.5]" />
+          <span>{cloudNotification}</span>
+        </div>
+      )}
     </div>
   );
 }

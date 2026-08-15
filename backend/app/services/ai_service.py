@@ -58,6 +58,8 @@ Return strictly valid JSON matching this schema."""
 
     def chat(self, request: ChatRequest) -> ChatResponse:
         pdf_context = (request.pdfContext or "No document text available")[:35000]
+        user_message = request.message or "What is this document about?"
+
         system_instruction = f"""You are Easy PDF AI Assistant, an expert PDF document companion built into Easy PDF.
 Answer questions accurately based on the provided PDF content. If the answer is directly in the document, quote or cite specific context or page hints when possible.
 Be helpful, precise, clear, and engaging.
@@ -78,16 +80,52 @@ PDF DOCUMENT CONTENT:
         contents.append(
             types.Content(
                 role="user",
-                parts=[types.Part.from_text(text=request.message)],
+                parts=[types.Part.from_text(text=user_message)],
             )
         )
 
-        text = self.provider.generate_content(
-            prompt=contents,
-            system_instruction=system_instruction,
-        )
+        try:
+            text = self.provider.generate_content(
+                prompt=contents,
+                system_instruction=system_instruction,
+            )
+            return ChatResponse(text=text)
+        except Exception as e:
+            err_str = str(e)
+            print(f"AI Chat Warning: {err_str}")
+            fallback_answer = self._extract_text_fallback_answer(pdf_context, user_message)
+            if fallback_answer:
+                return ChatResponse(text=fallback_answer)
+            if "API key" in err_str or "API_KEY" in err_str or "400" in err_str:
+                raise ValueError("AI service is not configured. Please set a valid AI_API_KEY in backend/.env.")
+            raise e
 
-        return ChatResponse(text=text)
+    def _extract_text_fallback_answer(self, pdf_context: str, query: str) -> Optional[str]:
+        if not pdf_context or "No document text available" in pdf_context or len(pdf_context.strip()) < 20:
+            return None
+
+        query_words = [
+            w.lower()
+            for w in re.findall(r"\w+", query)
+            if len(w) > 2 and w.lower() not in {"what", "is", "the", "about", "this", "that", "for", "with", "show", "tell", "give"}
+        ]
+
+        lines = [line.strip() for line in pdf_context.split("\n") if line.strip()]
+        matching_lines: List[str] = []
+
+        for line in lines:
+            line_lower = line.lower()
+            if any(word in line_lower for word in query_words):
+                matching_lines.append(line)
+
+        if matching_lines:
+            excerpt = "\n".join(matching_lines[:6])
+            return f"Extracted from document:\n\n{excerpt}"
+        elif len(lines) > 0:
+            excerpt = "\n".join([l for l in lines if not l.startswith("--- Page")][:8])
+            return f"Extracted Document Content:\n\n{excerpt}"
+
+        return None
 
     def ocr_enhance(self, request: OcrEnhanceRequest) -> OcrEnhanceResponse:
         if request.imageBase64:

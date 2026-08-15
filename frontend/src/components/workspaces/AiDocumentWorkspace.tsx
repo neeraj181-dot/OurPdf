@@ -111,27 +111,47 @@ export const AiDocumentWorkspace: React.FC<AiDocumentWorkspaceProps> = ({
     setIsChatting(true);
 
     try {
-      const res = await fetch("/api/ai/chat", {
+      const formData = new FormData();
+      formData.append("question", textToSend);
+      formData.append("pdfContext", activeFile.extractedText || "");
+      formData.append("file", activeFile.file);
+      formData.append(
+        "history",
+        JSON.stringify(
+          chatMessages.map((m) => ({ role: m.role, text: m.text }))
+        )
+      );
+
+      const res = await fetch("/api/document/qa", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: textToSend,
-          pdfContext: activeFile.extractedText || "No text available",
-          history: chatMessages,
-        }),
+        body: formData,
       });
-      const data = await res.json();
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.detail || data.error || `Server error (${res.status})`);
+      }
+
+      const responseText = data.text || data.answer || "I couldn't find a direct answer in this document.";
 
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         role: "assistant",
-        text: data.text || "I was unable to retrieve a response.",
+        text: responseText,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setChatMessages((prev) => [...prev, aiMsg]);
       soundEffects.playSuccess();
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("Q&A Chat Error:", e);
+      const errorMsg: ChatMessage = {
+        id: `ai-err-${Date.now()}`,
+        role: "assistant",
+        text: `I couldn't process this document: ${e?.message || "Please check backend connection and AI service configuration."}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setChatMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsChatting(false);
     }
@@ -142,18 +162,26 @@ export const AiDocumentWorkspace: React.FC<AiDocumentWorkspaceProps> = ({
     soundEffects.playClick();
     setIsProcessingOcr(true);
     try {
-      const res = await fetch("/api/ai/ocr-enhance", {
+      const formData = new FormData();
+      formData.append("file", activeFile.file);
+
+      const res = await fetch("/api/ocr", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rawText: activeFile.extractedText || "",
-        }),
+        body: formData,
       });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Server returned error ${res.status}`);
+      }
+
       const data = await res.json();
-      setFormattedOcrText(data.formattedText);
+      const extractedTextResult = data.formattedText || data.text || "";
+      setFormattedOcrText(extractedTextResult);
       soundEffects.playSuccess();
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("OCR Request Error:", e);
+      alert(`OCR Failed: ${e?.message || "An error occurred while communicating with the backend OCR service."}`);
     } finally {
       setIsProcessingOcr(false);
     }

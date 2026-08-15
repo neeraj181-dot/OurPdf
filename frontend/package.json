@@ -14,7 +14,11 @@
     "@types/canvas-confetti": "^1.9.0",
     "@vitejs/plugin-react": "^5.0.4",
     "canvas-confetti": "^1.9.4",
+    "docx": "^9.7.1",
+    "html2canvas": "^1.4.1",
+    "imagetracerjs": "^1.2.6",
     "lucide-react": "^0.546.0",
+    "mammoth": "^1.12.1",
     "motion": "^12.23.24",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.2.108",
@@ -23,6 +27,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@types/html2canvas": "^0.5.35",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",

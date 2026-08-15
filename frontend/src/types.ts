@@ -1,4 +1,4 @@
-export type ToolCategory = "all" | "popular" | "read" | "edit" | "convert" | "security";
+export type ToolCategory = "all" | "create" | "edit" | "pages" | "enhance" | "convert" | "security";
 
 export interface PDFTool {
   id: string;
