@@ -33,6 +33,7 @@ interface SpotifySidebarProps {
   setSoundEnabled: (val: boolean) => void;
   user: UserProfile | null;
   onOpenAuthModal: (mode?: "login" | "register") => void;
+  onOpenProfile?: () => void;
   onLogout: () => void;
 }
 
@@ -50,6 +51,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
   setSoundEnabled,
   user,
   onOpenAuthModal,
+  onOpenProfile,
   onLogout,
 }) => {
   return (
@@ -320,15 +322,26 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
       <div className="bg-[#121215] rounded-xl p-3 border border-zinc-800/80 flex items-center justify-between text-xs">
         {user ? (
           <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-[#1DB954] text-black font-extrabold flex items-center justify-center text-xs shrink-0">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onOpenProfile?.();
+              }}
+              className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+              title="View Profile"
+            >
+              {user.avatar ? (
+                <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover border border-zinc-600 shrink-0" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[#1DB954] text-black font-extrabold flex items-center justify-center text-xs shrink-0">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+              )}
               <div className="min-w-0">
                 <span className="font-bold text-white block truncate">{user.name}</span>
                 <span className="text-[10px] text-zinc-400 block truncate">{user.email}</span>
               </div>
-            </div>
+            </button>
             <button
               onClick={() => {
                 soundEffects.playClick();

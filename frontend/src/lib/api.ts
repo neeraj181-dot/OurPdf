@@ -10,6 +10,11 @@ export interface UserProfile {
   email: string;
   is_active: boolean;
   created_at: string;
+  // Optional fields for UI display (populated by demo auth or Google sign-in)
+  avatar?: string;
+  plan?: "free" | "pro";
+  aiCredits?: number;
+  maxAiCredits?: number;
 }
 
 export interface AuthResponse {

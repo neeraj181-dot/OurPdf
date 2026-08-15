@@ -36,7 +36,11 @@ import { WordWorkspace } from "./components/workspaces/WordWorkspace";
 import { MyDocumentsWorkspace } from "./components/workspaces/MyDocumentsWorkspace";
 import { SecuritySearchWorkspace } from "./components/workspaces/SecuritySearchWorkspace";
 import { AuthModal } from "./components/AuthModal";
+import { UserProfileModal } from "./components/UserProfileModal";
+import { LoginPage } from "./components/LoginPage";
+import { GoogleOneTapPrompt } from "./components/GoogleOneTapPrompt";
 import { UserProfile, apiGetMe, apiLogout, getStoredToken, apiSaveDocument } from "./lib/api";
+import { getDemoStoredUser, demoClearSession } from "./lib/auth";
 
 export default function App() {
   // User Authentication State
@@ -44,6 +48,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"login" | "register">("login");
   const [authModalSubtitle, setAuthModalSubtitle] = useState<string | undefined>(undefined);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSavedToCloud, setIsSavedToCloud] = useState(false);
   const [cloudNotification, setCloudNotification] = useState<string | null>(null);
 
@@ -51,14 +56,28 @@ export default function App() {
   const [files, setFiles] = useState<PDFFileItem[]>([]);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
 
-  // Load user on mount if token exists
+  // Load user on mount (try API token first, fallback to demo session)
   useEffect(() => {
     if (getStoredToken()) {
       apiGetMe()
         .then((u) => setUser(u))
-        .catch(() => apiLogout());
+        .catch(() => {
+          apiLogout();
+          const demoUser = getDemoStoredUser();
+          if (demoUser) setUser(demoUser);
+        });
+    } else {
+      const demoUser = getDemoStoredUser();
+      if (demoUser) setUser(demoUser);
     }
   }, []);
+
+  const handleLogout = () => {
+    apiLogout();
+    demoClearSession();
+    setUser(null);
+    soundEffects.playClick();
+  };
 
   // Navigation & Search State
   const [activeView, setActiveView] = useState<string>("home"); // "home" | "browse" | "ai-lab"
@@ -407,11 +426,8 @@ export default function App() {
             setAuthModalSubtitle(undefined);
             setIsAuthModalOpen(true);
           }}
-          onLogout={() => {
-            apiLogout();
-            setUser(null);
-            soundEffects.playClick();
-          }}
+          onOpenProfile={() => setIsProfileModalOpen(true)}
+          onLogout={handleLogout}
         />
 
         {/* Right Stage Main Content */}
@@ -437,16 +453,21 @@ export default function App() {
               setAuthModalSubtitle(undefined);
               setIsAuthModalOpen(true);
             }}
-            onLogout={() => {
-              apiLogout();
-              setUser(null);
-              soundEffects.playClick();
-            }}
+            onOpenProfile={() => setIsProfileModalOpen(true)}
+            onLogout={handleLogout}
           />
 
           {/* Dynamic Scrollable Stage View */}
-          <main className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-            {activeView === "my-docs" ? (
+          <main className={`flex-1 overflow-y-auto custom-scrollbar ${activeView === "login" ? "" : "p-6"}`}>
+            {activeView === "login" ? (
+              <LoginPage
+                onAuthSuccess={(u) => {
+                  setUser(u);
+                  setActiveView("home");
+                }}
+                onContinueAsGuest={() => setActiveView("home")}
+              />
+            ) : activeView === "my-docs" ? (
               <MyDocumentsWorkspace
                 user={user}
                 onOpenAuthModal={(mode) => {
@@ -730,6 +751,19 @@ export default function App() {
           soundEffects.playSuccess();
         }}
       />
+
+      {/* User Profile Modal */}
+      {user && (
+        <UserProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          user={user}
+          onLogout={handleLogout}
+        />
+      )}
+
+      {/* Floating Google One Tap Prompt for unauthenticated users */}
+      {!user && <GoogleOneTapPrompt onAuthSuccess={(u) => setUser(u)} />}
 
       {/* Floating Cloud Notification Toast */}
       {cloudNotification && (

@@ -74,3 +74,11 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
 }
+
+// Auth-related types for login/signup UI
+export type AuthMode = "login" | "signup" | "forgot";
+
+export interface AuthResult {
+  success: boolean;
+  message?: string;
+}

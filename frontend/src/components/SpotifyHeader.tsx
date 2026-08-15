@@ -14,6 +14,7 @@ interface SpotifyHeaderProps {
   onBackClick: () => void;
   user: UserProfile | null;
   onOpenAuthModal: (mode?: "login" | "register") => void;
+  onOpenProfile?: () => void;
   onLogout?: () => void;
 }
 
@@ -27,6 +28,7 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
   onBackClick,
   user,
   onOpenAuthModal,
+  onOpenProfile,
   onLogout,
 }) => {
   const categories: { id: ToolCategory; label: string }[] = [
@@ -104,10 +106,23 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
 
           {user ? (
             <div className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 px-2.5 py-1 rounded-lg text-xs">
-              <div className="w-5 h-5 rounded-full bg-[#1DB954] text-black font-extrabold flex items-center justify-center text-[10px]">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-              <span className="font-bold text-white text-xs hidden sm:inline truncate max-w-[120px]">{user.name}</span>
+              <button
+                onClick={() => {
+                  soundEffects.playClick();
+                  onOpenProfile?.();
+                }}
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                title="View Profile"
+              >
+                {user.avatar ? (
+                  <img src={user.avatar} alt={user.name} className="w-5 h-5 rounded-full object-cover border border-zinc-600" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-[#1DB954] text-black font-extrabold flex items-center justify-center text-[10px]">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="font-bold text-white text-xs hidden sm:inline truncate max-w-[120px]">{user.name}</span>
+              </button>
               {onLogout && (
                 <button
                   onClick={() => {
