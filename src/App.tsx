@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Upload, Plus, Sparkles, CheckCircle2, FileText, Layers, Zap } from "lucide-react";
-import { PDFFileItem, ToolCategory, WatermarkOptions, PageNumberOptions } from "./types";
+import { PDFFileItem, ToolCategory, WatermarkOptions, PageNumberOptions, UserProfile, AuthMode } from "./types";
 import {
   processPdfFile,
   mergePDFs,
@@ -17,6 +17,7 @@ import {
 } from "./lib/pdfEngine";
 import { PDF_TOOLS } from "./data/toolsData";
 import { soundEffects } from "./lib/audio";
+import { getStoredUser, logoutUser } from "./lib/auth";
 
 import { SpotifySidebar } from "./components/SpotifySidebar";
 import { SpotifyHeader } from "./components/SpotifyHeader";
@@ -30,6 +31,13 @@ import { AiDocumentWorkspace } from "./components/workspaces/AiDocumentWorkspace
 import { ConvertWorkspace } from "./components/workspaces/ConvertWorkspace";
 import { AnnotateWorkspace } from "./components/workspaces/AnnotateWorkspace";
 import { RemoveWatermarkWorkspace } from "./components/workspaces/RemoveWatermarkWorkspace";
+import { AuthModal } from "./components/AuthModal";
+import { UserProfileModal } from "./components/UserProfileModal";
+import { LoginPage } from "./components/LoginPage";
+import { GoogleOneTapPrompt } from "./components/GoogleOneTapPrompt";
+
+
+
 
 export default function App() {
   // Loaded PDFs state
@@ -54,6 +62,25 @@ export default function App() {
   // Drag Overlay
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // User Auth State
+  const [user, setUser] = useState<UserProfile | null>(() => getStoredUser());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  const handleOpenAuth = (mode: AuthMode = "login") => {
+    setAuthMode(mode);
+    setActiveView("login");
+    setIsAuthModalOpen(true);
+  };
+
+
+  const handleLogout = () => {
+    logoutUser();
+    setUser(null);
+  };
+
 
   // Active File object
   const activeFile = files.find((f) => f.id === activeFileId) || files[0] || null;
@@ -327,6 +354,9 @@ export default function App() {
           onSelectPresetPipeline={handleSelectPresetPipeline}
           soundEnabled={soundEnabled}
           setSoundEnabled={setSoundEnabled}
+          user={user}
+          onOpenAuth={handleOpenAuth}
+          onOpenProfile={() => setIsProfileModalOpen(true)}
         />
 
         {/* Right Stage Main Content */}
@@ -343,12 +373,29 @@ export default function App() {
               setActiveToolId(null);
               setDownloadBytes(null);
             }}
+            user={user}
+            onOpenAuth={handleOpenAuth}
+            onOpenProfile={() => setIsProfileModalOpen(true)}
+            onLogout={handleLogout}
           />
 
+
           {/* Dynamic Scrollable Stage View */}
-          <main className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-            {/* VIEW 1: HOME BROWSE GRID */}
-            {!activeToolId && (
+          <main className="flex-1 overflow-y-auto custom-scrollbar relative">
+            {/* VIEW 0: FULL STANDALONE LOGIN PAGE */}
+            {activeView === "login" ? (
+              <LoginPage
+                onAuthSuccess={(u) => {
+                  setUser(u);
+                  setActiveView("home");
+                }}
+                onContinueAsGuest={() => setActiveView("home")}
+              />
+            ) : (
+              <div className="p-6">
+                {/* VIEW 1: HOME BROWSE GRID */}
+                {!activeToolId && (
+
               <div className="flex flex-col gap-6">
                 {/* Clean Feature Header */}
                 <div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-6">
@@ -513,7 +560,11 @@ export default function App() {
                 )}
               </div>
             )}
-          </main>
+          </div>
+        )}
+      </main>
+
+
 
           {/* Sticky Bottom Player Bar */}
           <SpotifyPlayerBar
@@ -536,6 +587,30 @@ export default function App() {
           />
         </div>
       </div>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        initialMode={authMode}
+        onAuthSuccess={(u) => setUser(u)}
+      />
+
+      {/* User Profile Modal */}
+      {user && (
+        <UserProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          user={user}
+          onUserUpdate={(updated) => setUser(updated)}
+          onLogout={handleLogout}
+        />
+      )}
+
+      {/* Floating Google One Tap Prompt for any unauthenticated user */}
+      {!user && <GoogleOneTapPrompt onAuthSuccess={(u) => setUser(u)} />}
+
     </div>
   );
 }
+

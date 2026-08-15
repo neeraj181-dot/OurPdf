@@ -14,8 +14,11 @@ import {
   VolumeX,
   FileCheck,
   Eraser,
+  Sparkles,
+  Crown,
+  User,
 } from "lucide-react";
-import { PDFFileItem } from "../types";
+import { PDFFileItem, UserProfile, AuthMode } from "../types";
 import { soundEffects } from "../lib/audio";
 
 interface SpotifySidebarProps {
@@ -29,6 +32,9 @@ interface SpotifySidebarProps {
   onSelectPresetPipeline: (preset: string) => void;
   soundEnabled: boolean;
   setSoundEnabled: (val: boolean) => void;
+  user: UserProfile | null;
+  onOpenAuth: (mode?: AuthMode) => void;
+  onOpenProfile: () => void;
 }
 
 export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
@@ -42,6 +48,9 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
   onSelectPresetPipeline,
   soundEnabled,
   setSoundEnabled,
+  user,
+  onOpenAuth,
+  onOpenProfile,
 }) => {
   return (
     <aside className="w-64 bg-[#09090b] text-zinc-400 flex flex-col h-full gap-2 p-2 select-none shrink-0 font-sans">
@@ -50,7 +59,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
         {/* Brand Header */}
         <div className="flex items-center justify-between pb-1">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#1DB954] flex items-center justify-center text-black font-bold">
+            <div className="w-8 h-8 rounded-lg bg-[#1DB954] flex items-center justify-center text-black font-bold shadow-[0_0_15px_rgba(29,185,84,0.3)]">
               <FileText className="w-4 h-4 stroke-[2.5]" />
             </div>
             <div>
@@ -164,7 +173,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                   soundEffects.playClick();
                   onUploadClick();
                 }}
-                className="mt-1 bg-zinc-100 hover:bg-white text-zinc-900 text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
+                className="mt-1 bg-zinc-100 hover:bg-white text-zinc-900 text-xs font-semibold px-3 py-1.5 rounded-md transition-colors cursor-pointer"
               >
                 Upload File
               </button>
@@ -240,7 +249,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 soundEffects.playClick();
                 onSelectPresetPipeline("ai-summary");
               }}
-              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors cursor-pointer"
             >
               <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
                 <FileCheck className="w-3 h-3 text-[#1DB954]" />
@@ -253,7 +262,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 soundEffects.playClick();
                 onSelectPresetPipeline("merge");
               }}
-              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors cursor-pointer"
             >
               <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
                 <Zap className="w-3 h-3 text-[#1DB954]" />
@@ -267,7 +276,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 onSelectPresetPipeline("watermark");
               }}
               title="Add text or logo watermark"
-              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors cursor-pointer"
             >
               <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
                 <Lock className="w-3 h-3 text-[#1DB954]" />
@@ -281,7 +290,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 onSelectPresetPipeline("remove-watermark");
               }}
               title="Mark and erase unwanted watermarks from authorized documents or images"
-              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors cursor-pointer"
             >
               <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
                 <Eraser className="w-3 h-3 text-[#1DB954]" />
@@ -289,6 +298,67 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
               <span className="truncate">Remove Watermark</span>
             </button>
           </div>
+        </div>
+
+        {/* User Account / Pro Upgrade Sidebar Footer */}
+        <div className="mt-auto pt-3 border-t border-zinc-800/80">
+          {user ? (
+            <div
+              onClick={() => {
+                soundEffects.playClick();
+                onOpenProfile();
+              }}
+              className="flex items-center justify-between p-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 transition-colors cursor-pointer group"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-7 h-7 rounded-lg object-cover bg-zinc-700"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-lg bg-[#1DB954] text-black font-bold text-xs flex items-center justify-center">
+                    {user.name.charAt(0)}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-zinc-200 truncate group-hover:text-[#1DB954]">
+                    {user.name}
+                  </div>
+                  <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-[#1DB954]" />
+                    <span>{user.aiCredits} Credits</span>
+                  </div>
+                </div>
+              </div>
+              {user.plan === "pro" ? (
+                <Crown className="w-4 h-4 text-[#1DB954] fill-[#1DB954] shrink-0" />
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    soundEffects.playClick();
+                    onOpenProfile();
+                  }}
+                  className="bg-[#1DB954] hover:bg-[#1ed760] text-black text-[10px] font-bold px-2 py-1 rounded transition-colors"
+                >
+                  Pro
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onOpenAuth("login");
+              }}
+              className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl bg-[#1DB954]/15 border border-[#1DB954]/30 hover:bg-[#1DB954]/25 text-[#1DB954] font-bold text-xs transition-all cursor-pointer"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Log In to Save Files</span>
+            </button>
+          )}
         </div>
       </div>
     </aside>

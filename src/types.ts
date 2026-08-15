@@ -74,3 +74,25 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
 }
+
+export type PlanType = "free" | "pro";
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  plan: PlanType;
+  aiCredits: number;
+  maxAiCredits: number;
+  joinDate: string;
+}
+
+export type AuthMode = "login" | "signup" | "forgot";
+
+export interface AuthResult {
+  success: boolean;
+  message?: string;
+  user?: UserProfile;
+}
+
