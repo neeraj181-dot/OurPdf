@@ -72,15 +72,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </button>
 
         {/* Modal Header */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#1DB954] text-black flex items-center justify-center font-bold">
-            <Lock className="w-5 h-5 stroke-[2.5]" />
-          </div>
+        <div className="flex items-center gap-3.5">
+          <img
+            src="/ourpdf-icon.png"
+            alt="OurPDF"
+            className="w-11 h-11 rounded-xl object-contain bg-zinc-900 shadow-md border border-zinc-800 p-1"
+          />
           <div>
             <h2 className="text-lg font-bold text-white">
-              {customTitle || (isRegisterMode ? "Create Free EasyPDF Account" : "Sign In to EasyPDF")}
+              {customTitle || (isRegisterMode ? "Create Free OurPDF Account" : "Sign In to OurPDF")}
             </h2>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-zinc-400 mt-0.5">
               {customSubtitle ||
                 (isRegisterMode
                   ? "Save documents, view processing history & access cloud storage."

@@ -185,8 +185,8 @@ export const ConvertWorkspace: React.FC<ConvertWorkspaceProps> = ({
       const buffer = await fileToArrayBuffer(activeFile.file);
       const pdfDoc = await PDFDocument.load(buffer);
       pdfDoc.setTitle(activeFile.name.replace(/\.[^/.]+$/, ""));
-      pdfDoc.setProducer("EasyPDF PDF/A Archival Engine");
-      pdfDoc.setCreator("EasyPDF");
+      pdfDoc.setProducer("OurPDF PDF/A Archival Engine");
+      pdfDoc.setCreator("OurPDF");
       const pdfaBytes = await pdfDoc.save();
       downloadPdfBytes(pdfaBytes, `pdfa_${activeFile.name}`);
       soundEffects.playSuccess();

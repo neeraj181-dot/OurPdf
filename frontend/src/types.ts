@@ -20,6 +20,7 @@ export interface PDFFileItem {
   pageThumbnails: string[];
   extractedText?: string;
   pageTexts?: string[];
+  backendDocId?: number;
 }
 
 export interface PageOrderInfo {

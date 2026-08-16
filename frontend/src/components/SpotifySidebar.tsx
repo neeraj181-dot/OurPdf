@@ -1,29 +1,36 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   FileText,
   Home,
   Grid,
-  FileSearch,
   Plus,
   Trash2,
   FolderOpen,
-  Check,
   Zap,
   Lock,
   Volume2,
   VolumeX,
   FileCheck,
   Eraser,
+  User,
+  Search,
+  Edit3,
+  Download,
+  MoreVertical,
+  X,
 } from "lucide-react";
 import { PDFFileItem } from "../types";
 import { UserProfile } from "../lib/api";
 import { soundEffects } from "../lib/audio";
+import { RenameDocModal } from "./RenameDocModal";
+import { downloadPdfBytes } from "../lib/pdfEngine";
 
 interface SpotifySidebarProps {
   files: PDFFileItem[];
   activeFileId: string | null;
   onSelectFile: (id: string) => void;
   onRemoveFile: (id: string) => void;
+  onRenameFile?: (id: string, newName: string) => void;
   onUploadClick: () => void;
   onOpenFilePicker: () => void;
   onDropFiles?: (files: FileList | File[]) => void;
@@ -42,6 +49,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
   activeFileId,
   onSelectFile,
   onRemoveFile,
+  onRenameFile,
   onUploadClick,
   onOpenFilePicker,
   onDropFiles,
@@ -54,7 +62,26 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
   onOpenAuthModal,
   onLogout,
 }) => {
-  const [isDraggingOver, setIsDraggingOver] = React.useState<boolean>(false);
+  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
+  const [docSearchQuery, setDocSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<PDFFileItem | null>(null);
+
+  const filteredFiles = files.filter((f) =>
+    f.name.toLowerCase().includes(docSearchQuery.toLowerCase())
+  );
+
+  const handleDownloadActiveFile = async (item: PDFFileItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    soundEffects.playClick();
+    try {
+      const buffer = await item.file.arrayBuffer();
+      downloadPdfBytes(new Uint8Array(buffer), item.name);
+      soundEffects.playSuccess();
+    } catch (err) {
+      alert("Failed to download document.");
+    }
+  };
 
   return (
     <aside className="w-64 bg-[#09090b] text-zinc-400 flex flex-col h-full gap-2 p-2 select-none shrink-0 font-sans">
@@ -63,12 +90,14 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
         {/* Brand Header */}
         <div className="flex items-center justify-between pb-1">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#1DB954] flex items-center justify-center text-black font-bold">
-              <FileText className="w-4 h-4 stroke-[2.5]" />
-            </div>
+            <img
+              src="/ourpdf-icon.png"
+              alt="OurPDF"
+              className="w-8 h-8 rounded-lg object-contain bg-zinc-900 border border-zinc-800 shadow-sm p-0.5"
+            />
             <div>
               <h1 className="text-zinc-100 font-bold tracking-tight text-sm leading-none flex items-center gap-1.5">
-                Easy PDF
+                OurPDF
               </h1>
               <p className="text-[11px] text-zinc-400 mt-1 font-normal">Document Processing</p>
             </div>
@@ -153,6 +182,21 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
             <FolderOpen className={`w-4 h-4 ${activeView === "my-docs" ? "text-[#1DB954]" : "text-zinc-400"}`} />
             My Documents
           </button>
+
+          <button
+            onClick={() => {
+              soundEffects.playClick();
+              setActiveView("profile");
+            }}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+              activeView === "profile"
+                ? "bg-zinc-800 text-zinc-100"
+                : "hover:text-zinc-200 hover:bg-zinc-800/50"
+            }`}
+          >
+            <User className={`w-4 h-4 ${activeView === "profile" ? "text-[#1DB954]" : "text-zinc-400"}`} />
+            Profile & Account
+          </button>
         </nav>
       </div>
 
@@ -188,7 +232,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
           </div>
         )}
 
-        <div className="flex items-center justify-between px-2 py-1.5 mb-2">
+        <div className="flex items-center justify-between px-1 py-1 mb-1.5">
           <div className="flex items-center gap-2 text-zinc-200 font-bold text-xs">
             <FolderOpen className="w-4 h-4 text-[#1DB954]" />
             <span>Active Documents</span>
@@ -197,17 +241,57 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
             </span>
           </div>
 
-          <button
-            onClick={() => {
-              soundEffects.playClick();
-              onOpenFilePicker();
-            }}
-            className="p-1.5 rounded-lg hover:bg-zinc-800 hover:text-zinc-100 transition-colors text-zinc-400 cursor-pointer"
-            title="Upload PDF or Image file"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {files.length > 0 && (
+              <button
+                onClick={() => {
+                  setIsSearching(!isSearching);
+                  if (isSearching) setDocSearchQuery("");
+                }}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  isSearching ? "bg-zinc-800 text-[#1DB954]" : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100"
+                }`}
+                title="Search active documents"
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onOpenFilePicker();
+              }}
+              className="p-1.5 rounded-lg hover:bg-zinc-800 hover:text-zinc-100 transition-colors text-zinc-400 cursor-pointer"
+              title="Upload PDF or Image file"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+
+        {/* Mini Document Search Input */}
+        {isSearching && (
+          <div className="relative mb-2">
+            <Search className="w-3 h-3 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={docSearchQuery}
+              onChange={(e) => setDocSearchQuery(e.target.value)}
+              placeholder="Filter active files..."
+              className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 text-[11px] rounded-lg pl-7 pr-6 py-1.5 focus:border-[#1DB954] focus:outline-none"
+              autoFocus
+            />
+            {docSearchQuery && (
+              <button
+                onClick={() => setDocSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Uploaded Files List */}
         <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-1 custom-scrollbar">
@@ -216,7 +300,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
               <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400">
                 <FileText className="w-4 h-4" />
               </div>
-              <p className="text-xs text-zinc-400 font-normal">No PDF or Image uploaded</p>
+              <p className="text-xs text-zinc-400 font-normal">No PDF uploaded</p>
               <p className="text-[10px] text-zinc-500">Click below or drag & drop files here</p>
               <button
                 onClick={() => {
@@ -228,8 +312,12 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 Upload File
               </button>
             </div>
+          ) : filteredFiles.length === 0 ? (
+            <div className="text-center py-6 px-2 text-zinc-500 text-xs">
+              No matching files found.
+            </div>
           ) : (
-            files.map((item) => {
+            filteredFiles.map((item) => {
               const isActive = item.id === activeFileId;
               const isImage = !item.name.toLowerCase().endsWith(".pdf");
               return (
@@ -239,13 +327,13 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                     soundEffects.playClick();
                     onSelectFile(item.id);
                   }}
-                  className={`group relative flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-all ${
+                  className={`group relative flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
                     isActive
                       ? "bg-zinc-800 text-zinc-100 border-l-2 border-[#1DB954]"
                       : "hover:bg-zinc-800/60 text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
-                  <div className="w-8 h-8 rounded bg-zinc-900 border border-zinc-700/50 flex items-center justify-center shrink-0 overflow-hidden relative">
+                  <div className="w-7 h-7 rounded bg-zinc-900 border border-zinc-700/50 flex items-center justify-center shrink-0 overflow-hidden relative">
                     {item.pageThumbnails[0] ? (
                       <img
                         src={item.pageThumbnails[0]}
@@ -253,30 +341,52 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                         className="w-full h-full object-cover opacity-90"
                       />
                     ) : (
-                      <FileText className="w-4 h-4 text-zinc-400" />
+                      <FileText className="w-3.5 h-3.5 text-zinc-400" />
                     )}
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate leading-tight text-zinc-200">{item.name}</p>
-                    <p className="text-[10px] text-zinc-400 mt-0.5 flex items-center gap-1.5">
-                      <span>{isImage ? "Image" : `${item.pagesCount} ${item.pagesCount === 1 ? "page" : "pages"}`}</span>
+                    <p className="text-[10px] text-zinc-500 mt-0.5 flex items-center gap-1.5">
+                      <span>{isImage ? "Image" : `${item.pagesCount} p`}</span>
                       <span>•</span>
                       <span>{(item.size / 1024).toFixed(0)} KB</span>
                     </p>
                   </div>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      soundEffects.playClick();
-                      onRemoveFile(item.id);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-rose-400 transition-all"
-                    title="Remove document"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Actions on Hover */}
+                  <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-all">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenameTarget(item);
+                      }}
+                      className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                      title="Rename document"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                    </button>
+
+                    <button
+                      onClick={(e) => handleDownloadActiveFile(item, e)}
+                      className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-[#1DB954] transition-colors"
+                      title="Download PDF"
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        soundEffects.playClick();
+                        onRemoveFile(item.id);
+                      }}
+                      className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-rose-400 transition-colors"
+                      title="Remove document"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
               );
             })
@@ -349,12 +459,20 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
       <div className="bg-[#121215] rounded-xl p-3 border border-zinc-800/80 flex items-center justify-between text-xs">
         {user ? (
           <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-[#1DB954] text-black font-extrabold flex items-center justify-center text-xs shrink-0">
+            <div
+              onClick={() => {
+                soundEffects.playClick();
+                setActiveView("profile");
+              }}
+              className="flex items-center gap-2.5 min-w-0 cursor-pointer group flex-1"
+            >
+              <div className="w-8 h-8 rounded-full bg-[#1DB954] text-black font-extrabold flex items-center justify-center text-xs shrink-0 group-hover:ring-2 group-hover:ring-[#1DB954]/50 transition-all">
                 {user.name.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
-                <span className="font-bold text-white block truncate">{user.name}</span>
+                <span className="font-bold text-white block truncate group-hover:text-[#1DB954] transition-colors">
+                  {user.name}
+                </span>
                 <span className="text-[10px] text-zinc-400 block truncate">{user.email}</span>
               </div>
             </div>
@@ -363,7 +481,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 soundEffects.playClick();
                 onLogout();
               }}
-              className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-rose-400 text-[10px] font-bold"
+              className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-rose-400 text-[10px] font-bold cursor-pointer"
               title="Sign Out"
             >
               Logout
@@ -393,6 +511,19 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
           </div>
         )}
       </div>
+
+      {/* Rename Modal for Active Documents */}
+      {renameTarget && (
+        <RenameDocModal
+          isOpen={true}
+          currentFilename={renameTarget.name}
+          onClose={() => setRenameTarget(null)}
+          onRename={(newName) => {
+            onRenameFile?.(renameTarget.id, newName);
+            setRenameTarget(null);
+          }}
+        />
+      )}
     </aside>
   );
 };
