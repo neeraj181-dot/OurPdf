@@ -94,7 +94,7 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
             className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-3.5 py-2 rounded-lg transition-colors cursor-pointer shadow-md"
           >
             <Upload className="w-4 h-4 stroke-[2.5]" />
-            <span>Upload PDF</span>
+            <span>Upload PDF / Image</span>
           </button>
 
           <div className="hidden md:flex items-center gap-1.5 bg-zinc-800/60 border border-zinc-700/50 px-3 py-1.5 rounded-lg text-xs text-zinc-300">

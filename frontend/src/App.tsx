@@ -82,16 +82,10 @@ export default function App() {
   // Active File object
   const activeFile = files.find((f) => f.id === activeFileId) || files[0] || null;
 
-  // Handle Uploading PDF Files
+  // Handle Uploading PDF and Image Files
   const handleFileUpload = async (uploadedFiles: FileList | File[]) => {
-    const fileArray = Array.from(uploadedFiles).filter(
-      (f) => f.name.toLowerCase().endsWith(".pdf") || f.type.toLowerCase().includes("pdf")
-    );
-
-    if (fileArray.length === 0) {
-      alert("Please select a valid PDF file.");
-      return;
-    }
+    const fileList = Array.from(uploadedFiles);
+    if (fileList.length === 0) return;
 
     soundEffects.playClick();
     setIsProcessing(true);
@@ -99,34 +93,65 @@ export default function App() {
     try {
       const newItems: PDFFileItem[] = [];
 
-      for (const file of fileArray) {
-        try {
-          const processed = await processPdfFile(file);
-          const item: PDFFileItem = {
-            id: `file-${Date.now()}-${Math.random()}`,
-            file,
-            name: file.name,
-            size: file.size,
-            pagesCount: processed.pagesCount,
-            pageThumbnails: processed.pageThumbnails,
-            extractedText: processed.fullText,
-            pageTexts: processed.pageTexts,
-          };
-          newItems.push(item);
-        } catch (fileErr: any) {
-          console.error(`Error processing file ${file.name}:`, fileErr);
-          alert(`Failed to process PDF "${file.name}": ${fileErr?.message || "Invalid or corrupted PDF file."}`);
+      for (const file of fileList) {
+        const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type.toLowerCase().includes("pdf");
+        const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(file.name);
+
+        if (isPdf) {
+          try {
+            const processed = await processPdfFile(file);
+            const item: PDFFileItem = {
+              id: `file-${Date.now()}-${Math.random()}`,
+              file,
+              name: file.name,
+              size: file.size,
+              pagesCount: processed.pagesCount,
+              pageThumbnails: processed.pageThumbnails,
+              extractedText: processed.fullText,
+              pageTexts: processed.pageTexts,
+            };
+            newItems.push(item);
+          } catch (fileErr: any) {
+            console.error(`Error processing file ${file.name}:`, fileErr);
+            alert(`Failed to process PDF "${file.name}": ${fileErr?.message || "Invalid or corrupted PDF file."}`);
+          }
+        } else if (isImage) {
+          try {
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target?.result as string);
+              reader.onerror = (e) => reject(e);
+              reader.readAsDataURL(file);
+            });
+
+            const item: PDFFileItem = {
+              id: `file-${Date.now()}-${Math.random()}`,
+              file,
+              name: file.name,
+              size: file.size,
+              pagesCount: 1,
+              pageThumbnails: [dataUrl],
+              extractedText: "",
+              pageTexts: [""],
+            };
+            newItems.push(item);
+          } catch (imgErr: any) {
+            console.error(`Error reading image ${file.name}:`, imgErr);
+            alert(`Failed to load image "${file.name}".`);
+          }
+        } else {
+          alert(`File format not supported for "${file.name}". Please upload a PDF or Image file.`);
         }
       }
 
       if (newItems.length > 0) {
         setFiles((prev) => [...prev, ...newItems]);
-        setActiveFileId((prev) => prev || newItems[0].id);
+        setActiveFileId(newItems[0].id);
         soundEffects.playSuccess();
       }
     } catch (e: any) {
-      console.error("Failed to load PDF:", e);
-      alert(`Failed to load PDF: ${e?.message || "An error occurred during file upload."}`);
+      console.error("Failed to load file:", e);
+      alert(`Failed to load file: ${e?.message || "An error occurred during file upload."}`);
     } finally {
       setIsProcessing(false);
     }
@@ -387,11 +412,9 @@ export default function App() {
           activeFileId={activeFileId}
           onSelectFile={(id) => setActiveFileId(id)}
           onRemoveFile={handleRemoveFile}
-          onUploadClick={() => {
-            setActiveView("home");
-            setActiveToolId("merge");
-          }}
+          onUploadClick={() => fileInputRef.current?.click()}
           onOpenFilePicker={() => fileInputRef.current?.click()}
+          onDropFiles={handleFileUpload}
           activeView={activeView}
           setActiveView={(view) => {
             setActiveView(view);
@@ -422,10 +445,7 @@ export default function App() {
             setSearchQuery={setSearchQuery}
             selectedCategory={selectedCategory}
             setSelectedCategory={setSelectedCategory}
-            onUploadClick={() => {
-              setActiveView("home");
-              setActiveToolId("merge");
-            }}
+            onUploadClick={() => fileInputRef.current?.click()}
             activeToolId={activeToolId}
             onBackClick={() => {
               setActiveToolId(null);
@@ -568,6 +588,11 @@ export default function App() {
                   <RemoveWatermarkWorkspace
                     activeFile={activeFile}
                     isProcessingGlobal={isProcessing}
+                    onUploadFile={handleFileUpload}
+                    onProcessedOutput={(bytes, filename) => {
+                      setDownloadBytes(bytes);
+                      setDownloadFileName(filename);
+                    }}
                   />
                 )}
 
@@ -690,34 +715,9 @@ export default function App() {
             </>
             )}
           </main>
-
-          {/* Sticky Bottom Player Bar */}
-          <SpotifyPlayerBar
-            activeFile={activeFile}
-            activeToolTitle={activeToolObj?.title || (activeToolId ? "Studio Mode" : null)}
-            onProcessAction={() => {
-              if (activeToolId === "merge") handleRunMerge();
-            }}
-            isProcessing={isProcessing}
-            downloadBytes={downloadBytes}
-            downloadFileName={downloadFileName}
-            onDownloadClick={() => {
-              if (downloadBytes) {
-                downloadPdfBytes(downloadBytes, downloadFileName);
-              }
-            }}
-            onReset={() => {
-              setDownloadBytes(null);
-            }}
-            onSaveToCloud={() => {
-              if (downloadBytes) {
-                handleSaveToMyDocuments(downloadBytes, downloadFileName, activeToolId || "process");
-              }
-            }}
-            isSavedToCloud={isSavedToCloud}
-          />
         </div>
       </div>
+
 
       {/* Authentication Modal */}
       <AuthModal
@@ -738,6 +738,21 @@ export default function App() {
           <span>{cloudNotification}</span>
         </div>
       )}
+      {/* Hidden Global File Input for PDFs and Images */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleFileUpload(e.target.files);
+          }
+          e.target.value = "";
+        }}
+        accept="application/pdf,.pdf,image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp,image/*"
+        multiple
+        className="hidden"
+      />
     </div>
   );
 }
+

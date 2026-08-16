@@ -443,3 +443,84 @@ export async function compressPDF(
     savedPercentage,
   };
 }
+
+/**
+ * Renders a specific page of a PDF file to a high-resolution PNG data URL
+ */
+export async function renderPdfPageToDataUrl(
+  file: File,
+  pageIndex: number,
+  scale: number = 1.5
+): Promise<{ dataUrl: string; width: number; height: number }> {
+  const arrayBuffer = await fileToArrayBuffer(file);
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdfDoc = await loadingTask.promise;
+  const numPages = pdfDoc.numPages;
+  const targetPageNum = Math.min(Math.max(1, pageIndex + 1), numPages);
+
+  const page = await pdfDoc.getPage(targetPageNum);
+  const viewport = page.getViewport({ scale });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Could not create 2D rendering context for PDF page");
+  }
+
+  await page.render({ canvasContext: ctx, viewport } as any).promise;
+  const dataUrl = canvas.toDataURL("image/png");
+
+  return {
+    dataUrl,
+    width: canvas.width,
+    height: canvas.height,
+  };
+}
+
+/**
+ * Replaces a specific page in a PDF with a cleaned PNG image data URL and returns the updated PDF bytes.
+ * If originalFile is not a PDF, it creates a new single-page PDF from the cleaned image.
+ */
+export async function replacePdfPageWithImage(
+  originalFile: File | null,
+  pageIndex: number,
+  cleanedImageDataUrl: string
+): Promise<Uint8Array> {
+  const base64Data = cleanedImageDataUrl.split(",")[1] || cleanedImageDataUrl;
+  const imageBytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+
+  if (!originalFile || !originalFile.name.toLowerCase().endsWith(".pdf")) {
+    const newPdf = await PDFDocument.create();
+    const embeddedImg = await newPdf.embedPng(imageBytes);
+    const page = newPdf.addPage([embeddedImg.width, embeddedImg.height]);
+    page.drawImage(embeddedImg, {
+      x: 0,
+      y: 0,
+      width: embeddedImg.width,
+      height: embeddedImg.height,
+    });
+    return await newPdf.save();
+  }
+
+  const originalBuffer = await fileToArrayBuffer(originalFile);
+  const pdfDoc = await PDFDocument.load(originalBuffer);
+  const totalPages = pdfDoc.getPageCount();
+  const targetIdx = Math.min(Math.max(0, pageIndex), totalPages - 1);
+
+  const embeddedPng = await pdfDoc.embedPng(imageBytes);
+  const targetPage = pdfDoc.getPage(targetIdx);
+  const { width, height } = targetPage.getSize();
+
+  // Draw cleaned image over target page
+  targetPage.drawImage(embeddedPng, {
+    x: 0,
+    y: 0,
+    width: width,
+    height: height,
+  });
+
+  return await pdfDoc.save();
+}

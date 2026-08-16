@@ -228,3 +228,40 @@ export async function apiConvertWordToPdf(file: File): Promise<Uint8Array> {
   const { convertWordToPdfClient } = await import("./wordEngine");
   return await convertWordToPdfClient(file);
 }
+
+// 5. INPAINTING & WATERMARK REMOVAL API
+export async function apiInpaintImage(
+  imageSrc: string,
+  maskDataUrl: string,
+  method: "telea" | "ns" = "telea",
+  radius = 5,
+  dilate = 4
+): Promise<string> {
+  const formData = new FormData();
+  formData.append("image_base64", imageSrc);
+  formData.append("mask_base64", maskDataUrl);
+  formData.append("method", method);
+  formData.append("radius", radius.toString());
+  formData.append("dilate", dilate.toString());
+
+  const res = await fetch(`${API_BASE_URL}/document/inpaint`, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Inpainting failed" }));
+    throw new Error(err.detail || "Server inpainting failed");
+  }
+
+  const blob = await res.blob();
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target?.result as string);
+    reader.readAsDataURL(blob);
+  });
+}
+
