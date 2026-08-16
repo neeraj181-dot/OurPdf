@@ -1,13 +1,13 @@
-# EasyPDF — All-in-One Document & Image Workspace
+# OurPdf — All-in-One Document & Image Workspace
 
-EasyPDF is a comprehensive document productivity application featuring a **Word-style PDF editor**, **PDF & Image Toolkits**, **FastAPI Python backend with OCR**, **PostgreSQL database with Alembic migrations**, **User Authentication**, and **Persistent Document Storage**.
+OurPdf is a comprehensive document productivity application featuring a **Word-style PDF editor**, **PDF & Image Toolkits**, **FastAPI Python backend with OCR**, **PostgreSQL database with Alembic migrations**, **User Authentication**, and **Persistent Document Storage**.
 
 ---
 
 ## Architecture Overview
 
 ```text
-EasyPDF/
+OurPDF/
 ├── frontend/          # React 19 + Vite + TypeScript + Tailwind CSS + pdf-lib + pdfjs-dist
 ├── backend/           # FastAPI + SQLAlchemy 2.x + Alembic + PostgreSQL + PyMuPDF
 └── README.md
