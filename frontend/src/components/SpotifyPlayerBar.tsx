@@ -16,6 +16,7 @@ import { soundEffects } from "../lib/audio";
 interface SpotifyPlayerBarProps {
   activeFile: PDFFileItem | null;
   activeToolTitle: string | null;
+  activeToolId?: string | null;
   onProcessAction: () => void;
   isProcessing: boolean;
   downloadBytes: Uint8Array | null;
@@ -29,6 +30,7 @@ interface SpotifyPlayerBarProps {
 export const SpotifyPlayerBar: React.FC<SpotifyPlayerBarProps> = ({
   activeFile,
   activeToolTitle,
+  activeToolId,
   onProcessAction,
   isProcessing,
   downloadBytes,
@@ -38,6 +40,13 @@ export const SpotifyPlayerBar: React.FC<SpotifyPlayerBarProps> = ({
   onSaveToCloud,
   isSavedToCloud,
 }) => {
+  const isInteractiveWorkspace =
+    activeToolId === "remove-watermark" ||
+    activeToolId === "editor" ||
+    activeToolId === "browse" ||
+    activeToolId === "home" ||
+    activeToolId === "my-docs";
+
   const triggerConfetti = () => {
     confetti({
       particleCount: 60,
@@ -104,43 +113,47 @@ export const SpotifyPlayerBar: React.FC<SpotifyPlayerBarProps> = ({
             <RotateCcw className="w-4 h-4" />
           </button>
 
-          {/* Primary Action Button */}
-          <button
-            onClick={() => {
-              soundEffects.playClick();
-              onProcessAction();
-            }}
-            disabled={isProcessing || !activeFile}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg font-semibold text-xs transition-colors cursor-pointer ${
-              isProcessing
-                ? "bg-zinc-800 text-zinc-400 cursor-wait border border-zinc-700"
-                : !activeFile
-                ? "bg-zinc-800/60 text-zinc-500 cursor-not-allowed border border-zinc-800"
-                : "bg-[#1DB954] hover:bg-[#1ed760] text-black"
-            }`}
-          >
-            {isProcessing ? (
-              <>
-                <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                <span>Processing Document...</span>
-              </>
-            ) : (
-              <>
-                <span>
-                  {activeToolTitle ? `Process ${activeToolTitle}` : "Select Tool"}
-                </span>
-                <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-              </>
-            )}
-          </button>
+          {!isInteractiveWorkspace && (
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onProcessAction();
+              }}
+              disabled={isProcessing || !activeFile}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg font-semibold text-xs transition-colors cursor-pointer ${
+                isProcessing
+                  ? "bg-zinc-800 text-zinc-400 cursor-wait border border-zinc-700"
+                  : !activeFile
+                  ? "bg-zinc-800/60 text-zinc-500 cursor-not-allowed border border-zinc-800"
+                  : "bg-[#1DB954] hover:bg-[#1ed760] text-black"
+              }`}
+            >
+              {isProcessing ? (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 animate-spin" />
+                  <span>Processing Document...</span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    {activeToolTitle ? `Process ${activeToolTitle}` : "Select Tool"}
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         <p className="text-[11px] text-zinc-400 font-normal">
           {activeToolTitle
-            ? `Active Tool: ${activeToolTitle}`
-            : "Select a tool to process your PDF"}
+            ? isInteractiveWorkspace
+              ? `Studio Mode: ${activeToolTitle}`
+              : `Active Tool: ${activeToolTitle}`
+            : "Select a tool to process your PDF or Image"}
         </p>
       </div>
+
 
       {/* Right: Output Actions (Save to My Documents + Download) */}
       <div className="flex items-center justify-end gap-2.5 w-1/3 min-w-[240px]">

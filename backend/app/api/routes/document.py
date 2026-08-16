@@ -86,3 +86,55 @@ async def document_qa(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_msg,
         )
+
+
+@router.post("/inpaint")
+async def inpaint_image(
+    image: Optional[UploadFile] = File(None),
+    mask: Optional[UploadFile] = File(None),
+    image_base64: Optional[str] = Form(None),
+    mask_base64: Optional[str] = Form(None),
+    method: str = Form("telea"),
+    radius: int = Form(5),
+    dilate: int = Form(4),
+):
+    """
+    Seamlessly inpaint and remove watermarks/objects from image using OpenCV (Telea / Navier-Stokes).
+    Supports both multipart files and base64 payloads.
+    """
+    import base64
+    from fastapi import Response
+    from app.services.inpaint_service import InpaintService
+
+    try:
+        if image and mask:
+            image_bytes = await image.read()
+            mask_bytes = await mask.read()
+        elif image_base64 and mask_base64:
+            img_b64 = image_base64.split(",")[-1]
+            msk_b64 = mask_base64.split(",")[-1]
+            image_bytes = base64.b64decode(img_b64)
+            mask_bytes = base64.b64decode(msk_b64)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Both image and mask must be provided.",
+            )
+
+        cleaned_bytes = InpaintService.remove_watermark(
+            image_bytes=image_bytes,
+            mask_bytes=mask_bytes,
+            method=method,
+            radius=radius,
+            dilate=dilate,
+        )
+
+        return Response(content=cleaned_bytes, media_type="image/png")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Inpainting error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Inpainting failed: {str(e)}",
+        )

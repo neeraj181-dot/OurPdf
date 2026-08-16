@@ -26,6 +26,7 @@ interface SpotifySidebarProps {
   onRemoveFile: (id: string) => void;
   onUploadClick: () => void;
   onOpenFilePicker: () => void;
+  onDropFiles?: (files: FileList | File[]) => void;
   activeView: string;
   setActiveView: (view: string) => void;
   onSelectPresetPipeline: (preset: string) => void;
@@ -43,6 +44,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
   onRemoveFile,
   onUploadClick,
   onOpenFilePicker,
+  onDropFiles,
   activeView,
   setActiveView,
   onSelectPresetPipeline,
@@ -52,6 +54,8 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
   onOpenAuthModal,
   onLogout,
 }) => {
+  const [isDraggingOver, setIsDraggingOver] = React.useState<boolean>(false);
+
   return (
     <aside className="w-64 bg-[#09090b] text-zinc-400 flex flex-col h-full gap-2 p-2 select-none shrink-0 font-sans">
       {/* Top Navigation Box */}
@@ -152,8 +156,38 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
         </nav>
       </div>
 
-      {/* Library & Active Documents Section */}
-      <div className="bg-[#121215] rounded-xl p-3 flex-1 flex flex-col min-h-0 border border-zinc-800/80 overflow-hidden">
+      {/* Library & Active Documents Section with Drag & Drop */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDraggingOver(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDraggingOver(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDraggingOver(false);
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onDropFiles) {
+            onDropFiles(e.dataTransfer.files);
+          }
+        }}
+        className={`relative bg-[#121215] rounded-xl p-3 flex-1 flex flex-col min-h-0 border transition-all overflow-hidden ${
+          isDraggingOver ? "border-[#1DB954] bg-[#1DB954]/10 shadow-[0_0_20px_rgba(29,185,84,0.2)]" : "border-zinc-800/80"
+        }`}
+      >
+        {isDraggingOver && (
+          <div className="absolute inset-0 z-20 bg-black/80 backdrop-blur-xs flex flex-col items-center justify-center p-4 text-center border-2 border-dashed border-[#1DB954] rounded-xl">
+            <FolderOpen className="w-8 h-8 text-[#1DB954] animate-bounce mb-2" />
+            <p className="text-xs font-bold text-zinc-100">Drop PDF or Image files here</p>
+            <p className="text-[10px] text-zinc-400 mt-0.5">They will be added to Active Documents</p>
+          </div>
+        )}
+
         <div className="flex items-center justify-between px-2 py-1.5 mb-2">
           <div className="flex items-center gap-2 text-zinc-200 font-bold text-xs">
             <FolderOpen className="w-4 h-4 text-[#1DB954]" />
@@ -168,8 +202,8 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
               soundEffects.playClick();
               onOpenFilePicker();
             }}
-            className="p-1.5 rounded-lg hover:bg-zinc-800 hover:text-zinc-100 transition-colors text-zinc-400"
-            title="Upload new PDF file"
+            className="p-1.5 rounded-lg hover:bg-zinc-800 hover:text-zinc-100 transition-colors text-zinc-400 cursor-pointer"
+            title="Upload PDF or Image file"
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -182,13 +216,14 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
               <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400">
                 <FileText className="w-4 h-4" />
               </div>
-              <p className="text-xs text-zinc-400 font-normal">No PDF uploaded</p>
+              <p className="text-xs text-zinc-400 font-normal">No PDF or Image uploaded</p>
+              <p className="text-[10px] text-zinc-500">Click below or drag & drop files here</p>
               <button
                 onClick={() => {
                   soundEffects.playClick();
-                  onUploadClick();
+                  onOpenFilePicker();
                 }}
-                className="mt-1 bg-zinc-100 hover:bg-white text-zinc-900 text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
+                className="mt-1 bg-zinc-100 hover:bg-white text-zinc-900 text-xs font-semibold px-3 py-1.5 rounded-md transition-colors cursor-pointer"
               >
                 Upload File
               </button>
@@ -196,6 +231,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
           ) : (
             files.map((item) => {
               const isActive = item.id === activeFileId;
+              const isImage = !item.name.toLowerCase().endsWith(".pdf");
               return (
                 <div
                   key={item.id}
@@ -214,26 +250,19 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                       <img
                         src={item.pageThumbnails[0]}
                         alt="Thumbnail"
-                        className="w-full h-full object-cover opacity-80"
+                        className="w-full h-full object-cover opacity-90"
                       />
                     ) : (
                       <FileText className="w-4 h-4 text-zinc-400" />
                     )}
-                    {isActive && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <Check className="w-3.5 h-3.5 text-[#1DB954]" />
-                      </div>
-                    )}
                   </div>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium truncate text-zinc-200">
-                      {item.name}
-                    </p>
-                    <p className="text-[10px] text-zinc-400 flex items-center gap-1.5 mt-0.5">
-                      <span>{item.pagesCount} pages</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate leading-tight text-zinc-200">{item.name}</p>
+                    <p className="text-[10px] text-zinc-400 mt-0.5 flex items-center gap-1.5">
+                      <span>{isImage ? "Image" : `${item.pagesCount} ${item.pagesCount === 1 ? "page" : "pages"}`}</span>
                       <span>•</span>
-                      <span>{(item.size / (1024 * 1024)).toFixed(1)} MB</span>
+                      <span>{(item.size / 1024).toFixed(0)} KB</span>
                     </p>
                   </div>
 

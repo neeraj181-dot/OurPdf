@@ -1,74 +1,136 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Eraser,
   Upload,
-  CheckCircle2,
-  AlertTriangle,
   RotateCcw,
   Download,
-  FileText,
   Sparkles,
-  Eye,
-  Sliders,
-  ShieldCheck,
-  Split,
-  Plus,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Image as ImageIcon,
+  Target,
+  Square,
+  Trash2,
+  CheckCircle2,
+  Pencil,
 } from "lucide-react";
-import confetti from "canvas-confetti";
 import { PDFFileItem } from "../../types";
 import { soundEffects } from "../../lib/audio";
-import { downloadPdfBytes, imagesToPDF } from "../../lib/pdfEngine";
+import {
+  downloadPdfBytes,
+  imagesToPDF,
+  renderPdfPageToDataUrl,
+  replacePdfPageWithImage,
+} from "../../lib/pdfEngine";
+import { apiInpaintImage } from "../../lib/api";
 
 interface RemoveWatermarkWorkspaceProps {
   activeFile: PDFFileItem | null;
   isProcessingGlobal?: boolean;
+  onUploadFile?: (files: FileList | File[]) => void;
+  onProcessedOutput?: (bytes: Uint8Array, filename: string) => void;
+}
+
+interface SpotMarker {
+  id: string;
+  type: "spot" | "box";
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  radius?: number;
 }
 
 export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> = ({
   activeFile,
+  onUploadFile,
+  onProcessedOutput,
 }) => {
-  // State: Source Image
+  // State: Source Image & Page
   const [sourceImageSrc, setSourceImageSrc] = useState<string | null>(null);
   const [sourceFileName, setSourceFileName] = useState<string>("document_page");
   const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
+  const [isLoadingPage, setIsLoadingPage] = useState<boolean>(false);
 
-  // State: Rights confirmation
-  const [hasPermission, setHasPermission] = useState(false);
+  // State: Spot & Box Tool Modes
+  const [toolMode, setToolMode] = useState<"spot" | "box">("spot");
+  const [spotRadius, setSpotRadius] = useState<number>(30);
+  const [spots, setSpots] = useState<SpotMarker[]>([]);
 
-  // State: Canvas tool mode
-  const [toolMode, setToolMode] = useState<"brush" | "rectangle">("brush");
-  const [brushRadius, setBrushRadius] = useState<number>(25);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [dragRectStart, setDragRectStart] = useState<{ x: number; y: number } | null>(null);
+  // Dragging box state
+  const [isDraggingBox, setIsDraggingBox] = useState<boolean>(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
 
   // State: Processing & Result
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [progressStatus, setProgressStatus] = useState("");
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [cleanedImageSrc, setCleanedImageSrc] = useState<string | null>(null);
+  const [cleanedPdfBytes, setCleanedPdfBytes] = useState<Uint8Array | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Canvas Refs
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const rectOverlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // History for undo
-  const maskHistoryRef = useRef<ImageData[]>([]);
-
-  // Load initial image from active file thumbnail or file
+  // Load high-resolution page when activeFile or selectedPageIndex changes
   useEffect(() => {
-    if (activeFile && activeFile.pageThumbnails && activeFile.pageThumbnails.length > 0) {
-      const pageThumb = activeFile.pageThumbnails[selectedPageIndex] || activeFile.pageThumbnails[0];
-      if (pageThumb) {
-        setSourceImageSrc(pageThumb);
-        setSourceFileName(activeFile.name.replace(/\.pdf$/i, ""));
+    let isCancelled = false;
+
+    async function loadPage() {
+      if (!activeFile) {
+        setSourceImageSrc(null);
         setCleanedImageSrc(null);
+        setCleanedPdfBytes(null);
+        setSpots([]);
+        return;
+      }
+
+      setIsLoadingPage(true);
+      setErrorMessage(null);
+      setCleanedImageSrc(null);
+      setCleanedPdfBytes(null);
+      setSpots([]);
+
+      const targetIndex = Math.min(Math.max(0, selectedPageIndex), Math.max(0, activeFile.pagesCount - 1));
+      setSourceFileName(activeFile.name.replace(/\.pdf$/i, ""));
+
+      try {
+        if (activeFile.file && activeFile.name.toLowerCase().endsWith(".pdf")) {
+          const result = await renderPdfPageToDataUrl(activeFile.file, targetIndex, 1.6);
+          if (!isCancelled) {
+            setSourceImageSrc(result.dataUrl);
+          }
+        } else if (activeFile.pageThumbnails && activeFile.pageThumbnails[targetIndex]) {
+          if (!isCancelled) {
+            setSourceImageSrc(activeFile.pageThumbnails[targetIndex]);
+          }
+        }
+      } catch (err: any) {
+        console.error("Error rendering page:", err);
+        if (!isCancelled) {
+          if (activeFile.pageThumbnails && activeFile.pageThumbnails[targetIndex]) {
+            setSourceImageSrc(activeFile.pageThumbnails[targetIndex]);
+          } else {
+            setErrorMessage(`Failed to load page: ${err?.message || "Invalid file"}`);
+          }
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingPage(false);
+        }
       }
     }
+
+    loadPage();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [activeFile, selectedPageIndex]);
 
-  // Draw loaded source image on imageCanvas & initialize maskCanvas
+  // Draw loaded source image on imageCanvas & initialize mask/overlay canvases
   useEffect(() => {
     if (!sourceImageSrc) return;
 
@@ -77,349 +139,353 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
     img.onload = () => {
       const imgCanvas = imageCanvasRef.current;
       const maskCanvas = maskCanvasRef.current;
-      const rectCanvas = rectOverlayCanvasRef.current;
-      if (!imgCanvas || !maskCanvas || !rectCanvas) return;
+      const overlayCanvas = overlayCanvasRef.current;
+      if (!imgCanvas || !maskCanvas || !overlayCanvas) return;
 
-      const maxWidth = 800;
-      const scale = img.width > maxWidth ? maxWidth / img.width : 1;
-      const width = Math.round(img.width * scale);
-      const height = Math.round(img.height * scale);
+      const width = img.naturalWidth || img.width || 800;
+      const height = img.naturalHeight || img.height || 600;
 
       imgCanvas.width = width;
       imgCanvas.height = height;
       maskCanvas.width = width;
       maskCanvas.height = height;
-      rectCanvas.width = width;
-      rectCanvas.height = height;
+      overlayCanvas.width = width;
+      overlayCanvas.height = height;
 
       const ctx = imgCanvas.getContext("2d");
       if (ctx) {
+        ctx.clearRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
       }
 
-      const maskCtx = maskCanvas.getContext("2d");
-      if (maskCtx) {
-        maskCtx.clearRect(0, 0, width, height);
-        // Save initial blank state to history
-        maskHistoryRef.current = [maskCtx.getImageData(0, 0, width, height)];
-      }
-
-      const rectCtx = rectCanvas.getContext("2d");
-      if (rectCtx) {
-        rectCtx.clearRect(0, 0, width, height);
-      }
+      redrawMaskAndOverlay(spots, width, height);
     };
     img.src = sourceImageSrc;
-  }, [sourceImageSrc]);
+  }, [sourceImageSrc, spots]);
 
-  // Handle Uploading Standalone Image
-  const handleImageFileUpload = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      setErrorMessage("Please select a valid PNG, JPG, or WEBP image file.");
-      return;
-    }
-    setErrorMessage(null);
-    soundEffects.playClick();
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result) {
-        setSourceImageSrc(e.target.result as string);
-        setSourceFileName(file.name.replace(/\.[^/.]+$/, ""));
-        setCleanedImageSrc(null);
+  // Redraw mask and subtle spot indicators on overlay canvas
+  const redrawMaskAndOverlay = (currentSpots: SpotMarker[], width?: number, height?: number) => {
+    const maskCanvas = maskCanvasRef.current;
+    const overlayCanvas = overlayCanvasRef.current;
+    if (!maskCanvas || !overlayCanvas) return;
+
+    const w = width || maskCanvas.width;
+    const h = height || maskCanvas.height;
+
+    const maskCtx = maskCanvas.getContext("2d");
+    const overCtx = overlayCanvas.getContext("2d");
+    if (!maskCtx || !overCtx) return;
+
+    maskCtx.clearRect(0, 0, w, h);
+    overCtx.clearRect(0, 0, w, h);
+
+    currentSpots.forEach((spot) => {
+      if (spot.type === "spot") {
+        const rad = spot.radius || spotRadius;
+
+        // 1. Draw solid on mask canvas for backend inpainting engine
+        maskCtx.fillStyle = "rgba(239, 68, 68, 0.95)";
+        maskCtx.beginPath();
+        maskCtx.arc(spot.x, spot.y, rad, 0, Math.PI * 2);
+        maskCtx.fill();
+
+        // 2. Draw subtle clean highlight on visual overlay
+        overCtx.strokeStyle = "rgba(29, 185, 84, 0.9)";
+        overCtx.lineWidth = 1.5;
+        overCtx.fillStyle = "rgba(29, 185, 84, 0.2)";
+        overCtx.beginPath();
+        overCtx.arc(spot.x, spot.y, rad, 0, Math.PI * 2);
+        overCtx.fill();
+        overCtx.stroke();
+
+        // Subtle center crosshair
+        overCtx.beginPath();
+        overCtx.arc(spot.x, spot.y, 2.5, 0, Math.PI * 2);
+        overCtx.fillStyle = "#1DB954";
+        overCtx.fill();
+      } else if (spot.type === "box" && spot.width && spot.height) {
+        // Box mask
+        maskCtx.fillStyle = "rgba(239, 68, 68, 0.95)";
+        maskCtx.fillRect(spot.x, spot.y, spot.width, spot.height);
+
+        // Box overlay
+        overCtx.strokeStyle = "rgba(29, 185, 84, 0.9)";
+        overCtx.lineWidth = 1.5;
+        overCtx.setLineDash([4, 4]);
+        overCtx.fillStyle = "rgba(29, 185, 84, 0.18)";
+        overCtx.fillRect(spot.x, spot.y, spot.width, spot.height);
+        overCtx.strokeRect(spot.x, spot.y, spot.width, spot.height);
+        overCtx.setLineDash([]);
       }
-    };
-    reader.readAsDataURL(file);
+    });
   };
 
   // Canvas Mouse Coordinates Helper
-  const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = maskCanvasRef.current;
+  const getCanvasCoords = useCallback((clientX: number, clientY: number) => {
+    const canvas = overlayCanvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
+
+    const rawX = (clientX - rect.left) * scaleX;
+    const rawY = (clientY - rect.top) * scaleY;
+
     return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
+      x: Math.min(Math.max(0, rawX), canvas.width),
+      y: Math.min(Math.max(0, rawY), canvas.height),
     };
-  };
+  }, []);
 
-  // Start Drawing / Selection
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!hasPermission) return;
-    const coords = getCanvasCoords(e);
-    setIsDrawing(true);
+  // Handle Pointer Down
+  const handlePointerDown = (clientX: number, clientY: number) => {
+    if (!sourceImageSrc) return;
+    const coords = getCanvasCoords(clientX, clientY);
 
-    if (toolMode === "brush") {
-      drawBrushStroke(coords.x, coords.y);
-    } else {
-      setDragRectStart(coords);
+    if (toolMode === "spot") {
+      soundEffects.playClick();
+      const newSpot: SpotMarker = {
+        id: `spot-${Date.now()}-${Math.random()}`,
+        type: "spot",
+        x: coords.x,
+        y: coords.y,
+        radius: spotRadius,
+      };
+      setSpots((prev) => [...prev, newSpot]);
+    } else if (toolMode === "box") {
+      setIsDraggingBox(true);
+      setDragStart(coords);
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !hasPermission) return;
-    const coords = getCanvasCoords(e);
+  // Handle Pointer Move (for Box Drag Preview)
+  const handlePointerMove = (clientX: number, clientY: number) => {
+    if (!isDraggingBox || !dragStart || toolMode !== "box") return;
+    const coords = getCanvasCoords(clientX, clientY);
 
-    if (toolMode === "brush") {
-      drawBrushStroke(coords.x, coords.y);
-    } else if (toolMode === "rectangle" && dragRectStart) {
-      drawRectPreview(dragRectStart.x, dragRectStart.y, coords.x, coords.y);
-    }
+    const overlayCanvas = overlayCanvasRef.current;
+    if (!overlayCanvas) return;
+    const overCtx = overlayCanvas.getContext("2d");
+    if (!overCtx) return;
+
+    redrawMaskAndOverlay(spots);
+
+    const left = Math.min(dragStart.x, coords.x);
+    const top = Math.min(dragStart.y, coords.y);
+    const width = Math.abs(coords.x - dragStart.x);
+    const height = Math.abs(coords.y - dragStart.y);
+
+    overCtx.strokeStyle = "#1DB954";
+    overCtx.lineWidth = 1.5;
+    overCtx.setLineDash([4, 4]);
+    overCtx.fillStyle = "rgba(29, 185, 84, 0.2)";
+    overCtx.fillRect(left, top, width, height);
+    overCtx.strokeRect(left, top, width, height);
+    overCtx.setLineDash([]);
   };
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-    setIsDrawing(false);
+  // Handle Pointer Up (Commit Box)
+  const handlePointerUp = (clientX?: number, clientY?: number) => {
+    if (!isDraggingBox || !dragStart) return;
+    setIsDraggingBox(false);
 
-    if (toolMode === "rectangle" && dragRectStart) {
-      const coords = getCanvasCoords(e);
-      commitRectToMask(dragRectStart.x, dragRectStart.y, coords.x, coords.y);
-      setDragRectStart(null);
-      clearRectPreview();
-    }
+    if (clientX !== undefined && clientY !== undefined) {
+      const coords = getCanvasCoords(clientX, clientY);
+      const left = Math.min(dragStart.x, coords.x);
+      const top = Math.min(dragStart.y, coords.y);
+      const width = Math.abs(coords.x - dragStart.x);
+      const height = Math.abs(coords.y - dragStart.y);
 
-    saveMaskState();
-  };
-
-  // Draw Brush Stroke on Mask Canvas
-  const drawBrushStroke = (x: number, y: number) => {
-    const maskCanvas = maskCanvasRef.current;
-    if (!maskCanvas) return;
-    const ctx = maskCanvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.fillStyle = "rgba(239, 68, 68, 0.65)"; // Highlight red
-    ctx.beginPath();
-    ctx.arc(x, y, brushRadius, 0, Math.PI * 2);
-    ctx.fill();
-  };
-
-  // Draw Dragging Rectangle Overlay
-  const drawRectPreview = (x1: number, y1: number, x2: number, y2: number) => {
-    const rectCanvas = rectOverlayCanvasRef.current;
-    if (!rectCanvas) return;
-    const ctx = rectCanvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, rectCanvas.width, rectCanvas.height);
-    ctx.strokeStyle = "#ef4444";
-    ctx.lineWidth = 2;
-    ctx.fillStyle = "rgba(239, 68, 68, 0.35)";
-    const w = x2 - x1;
-    const h = y2 - y1;
-    ctx.fillRect(x1, y1, w, h);
-    ctx.strokeRect(x1, y1, w, h);
-  };
-
-  const clearRectPreview = () => {
-    const rectCanvas = rectOverlayCanvasRef.current;
-    if (!rectCanvas) return;
-    const ctx = rectCanvas.getContext("2d");
-    if (ctx) ctx.clearRect(0, 0, rectCanvas.width, rectCanvas.height);
-  };
-
-  // Commit Rectangle Fill to Mask Canvas
-  const commitRectToMask = (x1: number, y1: number, x2: number, y2: number) => {
-    const maskCanvas = maskCanvasRef.current;
-    if (!maskCanvas) return;
-    const ctx = maskCanvas.getContext("2d");
-    if (!ctx) return;
-
-    const left = Math.min(x1, x2);
-    const top = Math.min(y1, y2);
-    const width = Math.abs(x2 - x1);
-    const height = Math.abs(y2 - y1);
-
-    ctx.fillStyle = "rgba(239, 68, 68, 0.65)";
-    ctx.fillRect(left, top, width, height);
-  };
-
-  // Save Mask History for Undo
-  const saveMaskState = () => {
-    const maskCanvas = maskCanvasRef.current;
-    if (!maskCanvas) return;
-    const ctx = maskCanvas.getContext("2d");
-    if (ctx) {
-      const data = ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
-      maskHistoryRef.current.push(data);
-      if (maskHistoryRef.current.length > 15) {
-        maskHistoryRef.current.shift();
+      if (width > 4 && height > 4) {
+        soundEffects.playClick();
+        const newBox: SpotMarker = {
+          id: `box-${Date.now()}-${Math.random()}`,
+          type: "box",
+          x: left,
+          y: top,
+          width,
+          height,
+        };
+        setSpots((prev) => [...prev, newBox]);
       }
     }
+    setDragStart(null);
   };
 
-  // Undo Last Mark
+  // Undo Last Spot
   const handleUndo = () => {
     soundEffects.playClick();
-    if (maskHistoryRef.current.length > 1) {
-      maskHistoryRef.current.pop();
-      const prev = maskHistoryRef.current[maskHistoryRef.current.length - 1];
-      const maskCanvas = maskCanvasRef.current;
-      if (maskCanvas && prev) {
-        const ctx = maskCanvas.getContext("2d");
-        if (ctx) ctx.putImageData(prev, 0, 0);
-      }
-    } else {
-      handleClearMask();
-    }
+    setSpots((prev) => prev.slice(0, -1));
   };
 
-  // Clear All Mask Marks
-  const handleClearMask = () => {
+  // Clear All Spots
+  const handleClearAll = () => {
     soundEffects.playClick();
-    const maskCanvas = maskCanvasRef.current;
-    if (!maskCanvas) return;
-    const ctx = maskCanvas.getContext("2d");
-    if (ctx) {
-      ctx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-      maskHistoryRef.current = [ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)];
-    }
+    setSpots([]);
   };
 
-  // Run Content-Aware Inpainting Algorithm
-  const handleProcessInpaint = async () => {
-    if (!hasPermission) {
-      setErrorMessage("Please confirm you have permission/rights to edit this document before proceeding.");
+  // Handle Direct File Upload (PDF or Image)
+  const handleDirectFileUpload = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+
+    soundEffects.playClick();
+
+    if (file.name.toLowerCase().endsWith(".pdf") || file.type.includes("pdf")) {
+      if (onUploadFile) {
+        onUploadFile(files);
+      }
       return;
     }
 
+    if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      setErrorMessage(null);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          setSourceImageSrc(e.target.result as string);
+          setSourceFileName(file.name.replace(/\.[^/.]+$/, ""));
+          setCleanedImageSrc(null);
+          setCleanedPdfBytes(null);
+          setSpots([]);
+        }
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    setErrorMessage("Please select a PDF or Image file.");
+  };
+
+  // Process Watermark Removal
+  const handleProcessInpaint = async () => {
     const imgCanvas = imageCanvasRef.current;
     const maskCanvas = maskCanvasRef.current;
-    if (!imgCanvas || !maskCanvas) return;
-
-    const imgCtx = imgCanvas.getContext("2d");
-    const maskCtx = maskCanvas.getContext("2d");
-    if (!imgCtx || !maskCtx) return;
+    if (!imgCanvas || !maskCanvas || spots.length === 0 || !sourceImageSrc) {
+      setErrorMessage("Please click on or drag over the watermark area first.");
+      return;
+    }
 
     soundEffects.playClick();
     setIsProcessing(true);
     setErrorMessage(null);
-    setProgressStatus("Analyzing marked watermark boundary pixels...");
 
-    // Allow UI to render progress
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 30));
 
     try {
-      const width = imgCanvas.width;
-      const height = imgCanvas.height;
+      const maskDataUrl = maskCanvas.toDataURL("image/png");
 
-      const imgData = imgCtx.getImageData(0, 0, width, height);
-      const maskData = maskCtx.getImageData(0, 0, width, height);
+      let resultUrl: string | null = null;
 
-      const pixels = imgData.data;
-      const maskPixels = maskData.data;
+      try {
+        resultUrl = await apiInpaintImage(sourceImageSrc, maskDataUrl, "smart", 5, 3);
+      } catch (backendErr) {
+        console.warn("Inpainting fallback:", backendErr);
+      }
 
-      // Identify masked pixel boolean map
-      const isMasked = new Uint8Array(width * height);
-      let markedCount = 0;
+      if (!resultUrl) {
+        const imgCtx = imgCanvas.getContext("2d");
+        const maskCtx = maskCanvas.getContext("2d");
+        if (!imgCtx || !maskCtx) throw new Error("Canvas context error");
 
-      for (let i = 0; i < width * height; i++) {
-        // Red channel overlay indicator (> 50 alpha)
-        if (maskPixels[i * 4 + 3] > 50) {
-          isMasked[i] = 1;
-          markedCount++;
+        const w = imgCanvas.width;
+        const h = imgCanvas.height;
+        const imgData = imgCtx.getImageData(0, 0, w, h);
+        const maskData = maskCtx.getImageData(0, 0, w, h);
+        const pixels = imgData.data;
+        const maskPixels = maskData.data;
+
+        const isMasked = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) {
+          if (maskPixels[i * 4 + 3] > 20) isMasked[i] = 1;
         }
-      }
 
-      if (markedCount === 0) {
-        setIsProcessing(false);
-        setErrorMessage("No watermark area marked. Please draw or drag over the watermark region first.");
-        return;
-      }
+        const outputData = imgCtx.createImageData(w, h);
+        outputData.data.set(pixels);
+        const outPixels = outputData.data;
 
-      setProgressStatus(`Inpainting ${markedCount.toLocaleString()} masked pixels...`);
-      await new Promise((r) => setTimeout(r, 100));
+        for (let pass = 0; pass < 5; pass++) {
+          const radius = 6 + pass * 4;
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const idx = y * w + x;
+              if (!isMasked[idx]) continue;
 
-      // Fast multi-pass distance-weighted boundary pixel interpolation (Telea/Patch fill)
-      const outputData = imgCtx.createImageData(width, height);
-      outputData.data.set(pixels);
-      const outPixels = outputData.data;
+              let totalWeight = 0;
+              let sumR = 0;
+              let sumG = 0;
+              let sumB = 0;
 
-      const searchRadius = 18;
-      const passes = 3;
+              for (let dy = -radius; dy <= radius; dy++) {
+                const ny = y + dy;
+                if (ny < 0 || ny >= h) continue;
+                for (let dx = -radius; dx <= radius; dx++) {
+                  const nx = x + dx;
+                  if (nx < 0 || nx >= w) continue;
+                  const nIdx = ny * w + nx;
 
-      for (let pass = 0; pass < passes; pass++) {
-        for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-            const idx = y * width + x;
-            if (!isMasked[idx]) continue;
-
-            let totalWeight = 0;
-            let sumR = 0;
-            let sumG = 0;
-            let sumB = 0;
-
-            // Search surrounding unmasked pixels
-            for (let dy = -searchRadius; dy <= searchRadius; dy++) {
-              const ny = y + dy;
-              if (ny < 0 || ny >= height) continue;
-
-              for (let dx = -searchRadius; dx <= searchRadius; dx++) {
-                const nx = x + dx;
-                if (nx < 0 || nx >= width) continue;
-
-                const nIdx = ny * width + nx;
-
-                // Only sample unmasked background pixels
-                if (!isMasked[nIdx]) {
-                  const distSq = dx * dx + dy * dy;
-                  if (distSq === 0 || distSq > searchRadius * searchRadius) continue;
-
-                  const weight = 1 / Math.sqrt(distSq);
-                  const pIdx = nIdx * 4;
-
-                  sumR += pixels[pIdx] * weight;
-                  sumG += pixels[pIdx + 1] * weight;
-                  sumB += pixels[pIdx + 2] * weight;
-                  totalWeight += weight;
+                  if (!isMasked[nIdx] || pass > 0) {
+                    const distSq = dx * dx + dy * dy;
+                    if (distSq === 0 || distSq > radius * radius) continue;
+                    const weight = 1 / (distSq + 1);
+                    const pIdx = nIdx * 4;
+                    sumR += pixels[pIdx] * weight;
+                    sumG += pixels[pIdx + 1] * weight;
+                    sumB += pixels[pIdx + 2] * weight;
+                    totalWeight += weight;
+                  }
                 }
               }
-            }
 
-            if (totalWeight > 0) {
-              const targetIdx = idx * 4;
-              outPixels[targetIdx] = Math.round(sumR / totalWeight);
-              outPixels[targetIdx + 1] = Math.round(sumG / totalWeight);
-              outPixels[targetIdx + 2] = Math.round(sumB / totalWeight);
+              if (totalWeight > 0) {
+                const targetIdx = idx * 4;
+                outPixels[targetIdx] = Math.round(sumR / totalWeight);
+                outPixels[targetIdx + 1] = Math.round(sumG / totalWeight);
+                outPixels[targetIdx + 2] = Math.round(sumB / totalWeight);
+              }
             }
           }
+          pixels.set(outPixels);
         }
-        // Update pixel buffer for next pass smoothing
-        pixels.set(outPixels);
+
+        const resCanvas = document.createElement("canvas");
+        resCanvas.width = w;
+        resCanvas.height = h;
+        const resCtx = resCanvas.getContext("2d");
+        if (resCtx) {
+          resCtx.putImageData(outputData, 0, 0);
+          resultUrl = resCanvas.toDataURL("image/png");
+        }
       }
 
-      setProgressStatus("Finalizing output rendering...");
-      await new Promise((r) => setTimeout(r, 100));
-
-      // Create output result canvas
-      const resultCanvas = document.createElement("canvas");
-      resultCanvas.width = width;
-      resultCanvas.height = height;
-      const resCtx = resultCanvas.getContext("2d");
-      if (resCtx) {
-        resCtx.putImageData(outputData, 0, 0);
-        const resultUrl = resultCanvas.toDataURL("image/png");
+      if (resultUrl) {
         setCleanedImageSrc(resultUrl);
-        soundEffects.playSuccess();
 
-        confetti({
-          particleCount: 50,
-          spread: 60,
-          origin: { y: 0.8 },
-          colors: ["#1DB954", "#22c55e", "#ffffff"],
-        });
+        try {
+          const pdfBytes = await replacePdfPageWithImage(
+            activeFile?.file || null,
+            selectedPageIndex,
+            resultUrl
+          );
+          setCleanedPdfBytes(pdfBytes);
+          if (onProcessedOutput) {
+            onProcessedOutput(pdfBytes, `${sourceFileName}_cleaned.pdf`);
+          }
+        } catch (pdfErr) {
+          console.warn("Could not replace PDF page:", pdfErr);
+        }
+
+        soundEffects.playSuccess();
       }
     } catch (e: any) {
       console.error(e);
-      setErrorMessage("An error occurred while removing the watermark: " + (e.message || e));
+      setErrorMessage("Error removing watermark: " + (e.message || e));
     } finally {
       setIsProcessing(false);
-      setProgressStatus("");
     }
   };
 
-  // Download Output PNG Image
+  // Download Output PNG
   const handleDownloadImage = () => {
     if (!cleanedImageSrc) return;
     soundEffects.playClick();
@@ -429,306 +495,292 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
     a.click();
   };
 
-  // Export Output PNG as PDF Document
+  // Export Output PDF
   const handleExportAsPdf = async () => {
     if (!cleanedImageSrc) return;
     soundEffects.playClick();
     try {
-      // Fetch data URL into file object
-      const res = await fetch(cleanedImageSrc);
-      const blob = await res.blob();
-      const file = new File([blob], `${sourceFileName}_cleaned.png`, { type: "image/png" });
-      const pdfBytes = await imagesToPDF([file]);
-      downloadPdfBytes(pdfBytes, `${sourceFileName}_cleaned.pdf`);
+      if (cleanedPdfBytes) {
+        downloadPdfBytes(cleanedPdfBytes, `${sourceFileName}_cleaned.pdf`);
+      } else {
+        const res = await fetch(cleanedImageSrc);
+        const blob = await res.blob();
+        const file = new File([blob], `${sourceFileName}_cleaned.png`, { type: "image/png" });
+        const pdfBytes = await imagesToPDF([file]);
+        downloadPdfBytes(pdfBytes, `${sourceFileName}_cleaned.pdf`);
+      }
       soundEffects.playSuccess();
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("Export error:", e);
+      alert("Failed to export PDF: " + (e?.message || "Export error."));
     }
   };
 
+  const totalPages = activeFile?.pagesCount || 1;
+
   return (
-    <div className="flex flex-col gap-6 max-w-6xl mx-auto p-4 font-sans text-white">
-      {/* Top Banner & Header */}
-      <div className="bg-[#121215] p-5 rounded-xl border border-zinc-800/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#1DB954] text-black flex items-center justify-center shrink-0 font-bold">
-            <Eraser className="w-5 h-5 stroke-[2.5]" />
+    <div className="flex flex-col gap-5 max-w-6xl mx-auto p-2 font-sans text-white">
+      {/* Sleek Minimal Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#18181b] px-4 py-3 rounded-xl border border-zinc-800/80 shadow-md">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-[#1DB954] text-black flex items-center justify-center font-bold shrink-0">
+            <Target className="w-4 h-4" />
           </div>
           <div>
-            <div className="flex items-center gap-2 text-[10px] font-semibold text-[#1DB954] tracking-wider uppercase">
-              <span>Image & Page Cleanup Tool</span>
-            </div>
-            <h2 className="text-lg font-bold tracking-tight text-zinc-100">Remove Watermark</h2>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              Mark watermark regions on authorized document pages or images to restore clean background texture.
-            </p>
+            <h2 className="text-sm font-bold text-zinc-100 leading-none">Remove Watermark</h2>
+            <p className="text-[11px] text-zinc-400 mt-1">Select watermark areas to erase</p>
           </div>
         </div>
 
-        {/* Source File Switcher / Upload Trigger */}
+        {/* Rename Option */}
+        <div className="flex items-center gap-1.5 bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-700/60 focus-within:border-[#1DB954] transition-colors">
+          <Pencil className="w-3.5 h-3.5 text-[#1DB954] shrink-0" />
+          <input
+            type="text"
+            value={sourceFileName}
+            onChange={(e) => setSourceFileName(e.target.value)}
+            placeholder="File name..."
+            className="bg-transparent text-xs font-semibold text-zinc-200 focus:outline-none w-32 sm:w-48 placeholder:text-zinc-500"
+            title="Click to rename output file"
+          />
+        </div>
+
+        {/* Page Switcher & File Upload */}
         <div className="flex items-center gap-2">
-          {activeFile && activeFile.pagesCount > 1 && (
-            <select
-              value={selectedPageIndex}
-              onChange={(e) => {
-                soundEffects.playClick();
-                setSelectedPageIndex(Number(e.target.value));
-              }}
-              className="bg-zinc-800 text-white text-xs font-bold px-3 py-2 rounded-lg border border-zinc-700 focus:outline-none"
-            >
-              {Array.from({ length: activeFile.pagesCount }).map((_, i) => (
-                <option key={i} value={i}>
-                  Page {i + 1} of {activeFile.pagesCount}
-                </option>
-              ))}
-            </select>
+          {activeFile && totalPages > 1 && (
+            <div className="flex items-center gap-1 bg-zinc-900 px-2 py-1 rounded-lg border border-zinc-800 text-xs">
+              <button
+                onClick={() => setSelectedPageIndex((prev) => Math.max(0, prev - 1))}
+                disabled={selectedPageIndex === 0 || isLoadingPage}
+                className="p-1 rounded hover:bg-zinc-800 disabled:opacity-30 text-zinc-300 cursor-pointer"
+                title="Previous page"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="font-semibold text-zinc-300 text-xs px-1">
+                {selectedPageIndex + 1} / {totalPages}
+              </span>
+              <button
+                onClick={() => setSelectedPageIndex((prev) => Math.min(totalPages - 1, prev + 1))}
+                disabled={selectedPageIndex >= totalPages - 1 || isLoadingPage}
+                className="p-1 rounded hover:bg-zinc-800 disabled:opacity-30 text-zinc-300 cursor-pointer"
+                title="Next page"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold px-4 py-2 rounded-lg border border-zinc-700 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold px-3 py-1.5 rounded-lg border border-zinc-700 transition-colors cursor-pointer"
           >
-            <Upload className="w-4 h-4 text-[#1DB954]" />
-            <span>Upload Image File</span>
+            <Upload className="w-3.5 h-3.5" />
+            <span>{sourceImageSrc ? "Change File" : "Upload File"}</span>
           </button>
 
           <input
             type="file"
             ref={fileInputRef}
-            accept="image/png, image/jpeg, image/webp"
+            accept="application/pdf,.pdf,image/png,image/jpeg,image/jpg,image/webp"
             onChange={(e) => {
-              if (e.target.files && e.target.files[0]) {
-                handleImageFileUpload(e.target.files[0]);
-              }
+              handleDirectFileUpload(e.target.files);
+              e.target.value = "";
             }}
             className="hidden"
           />
         </div>
       </div>
 
-      {/* Mandatory Ownership & Permission Disclaimer */}
-      <div className="bg-[#18181b] p-4 rounded-xl border border-zinc-800 flex items-start gap-3">
-        <ShieldCheck className="w-5 h-5 text-[#1DB954] shrink-0 mt-0.5" />
-        <div className="flex-1 text-xs">
-          <label className="flex items-center gap-2 font-bold text-zinc-200 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={hasPermission}
-              onChange={(e) => setHasPermission(e.target.checked)}
-              className="w-4 h-4 accent-[#1DB954] rounded cursor-pointer"
-            />
-            <span>I confirm that I own or have permission/rights to modify this image or document page.</span>
-          </label>
-          <p className="text-zinc-400 mt-1 text-[11px] leading-relaxed">
-            This tool is intended for removing internal draft stamps, sample watermarks, or personal annotations on files you authorized. Do not use to remove copyright notices, legal disclaimers, or commercial licensing marks.
-          </p>
-        </div>
-      </div>
-
-      {/* Main Workspace Stage: Canvas Marker vs Output Preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* LEFT STAGE: Interactive Selection & Marking Canvas */}
-        <div className="bg-[#181818] p-5 rounded-2xl border border-zinc-800 flex flex-col gap-4 shadow-xl">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-[#1DB954]" />
-              <span>Step 1: Mark Watermark Area</span>
-            </h3>
-
-            {/* Undo / Clear Controls */}
+      {/* Main Workspace Stage */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* LEFT: Clean Canvas Stage */}
+        <div className="bg-[#181818] p-4 rounded-xl border border-zinc-800/90 flex flex-col gap-3 shadow-lg">
+          {/* Tool Control Bar */}
+          <div className="flex items-center justify-between gap-2 bg-[#202020] p-2 rounded-lg border border-zinc-800">
             <div className="flex items-center gap-1.5">
               <button
+                onClick={() => {
+                  soundEffects.playClick();
+                  setToolMode("spot");
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  toolMode === "spot" ? "bg-[#1DB954] text-black" : "bg-zinc-800 text-zinc-400 hover:text-white"
+                }`}
+              >
+                <Target className="w-3.5 h-3.5" />
+                <span>Click Spot</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  soundEffects.playClick();
+                  setToolMode("box");
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  toolMode === "box" ? "bg-[#1DB954] text-black" : "bg-zinc-800 text-zinc-400 hover:text-white"
+                }`}
+              >
+                <Square className="w-3.5 h-3.5" />
+                <span>Drag Box</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {toolMode === "spot" && (
+                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <span>Size:</span>
+                  <input
+                    type="range"
+                    min="15"
+                    max="65"
+                    value={spotRadius}
+                    onChange={(e) => setSpotRadius(Number(e.target.value))}
+                    className="w-16 accent-[#1DB954] cursor-pointer"
+                  />
+                </div>
+              )}
+
+              <button
                 onClick={handleUndo}
-                className="p-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1 transition-colors"
-                title="Undo last mark"
+                disabled={spots.length === 0}
+                className="p-1.5 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-300 text-xs transition-colors cursor-pointer"
+                title="Undo"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Undo</span>
               </button>
 
               <button
-                onClick={handleClearMask}
-                className="p-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1 transition-colors"
-                title="Clear all marks"
+                onClick={handleClearAll}
+                disabled={spots.length === 0}
+                className="p-1.5 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-rose-400 text-xs transition-colors cursor-pointer"
+                title="Clear"
               >
-                <Eraser className="w-3.5 h-3.5 text-rose-400" />
-                <span>Clear</span>
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
-          {/* Canvas Marking Tool Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#202020] p-3 rounded-xl border border-zinc-800">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-400 font-bold">Tool:</span>
-              <button
-                onClick={() => setToolMode("brush")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  toolMode === "brush"
-                    ? "bg-[#1DB954] text-black"
-                    : "bg-zinc-800 text-zinc-400 hover:text-white"
-                }`}
-              >
-                Brush Draw
-              </button>
-              <button
-                onClick={() => setToolMode("rectangle")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  toolMode === "rectangle"
-                    ? "bg-[#1DB954] text-black"
-                    : "bg-zinc-800 text-zinc-400 hover:text-white"
-                }`}
-              >
-                Rectangle Drag
-              </button>
-            </div>
-
-            {toolMode === "brush" && (
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs text-zinc-400 font-bold">Size:</span>
-                <input
-                  type="range"
-                  min="8"
-                  max="60"
-                  value={brushRadius}
-                  onChange={(e) => setBrushRadius(Number(e.target.value))}
-                  className="w-24 accent-[#1DB954] cursor-pointer"
-                />
-                <span className="text-xs font-mono text-[#1DB954] w-8">{brushRadius}px</span>
+          {/* Interactive Stacked Canvas Area with Drag & Drop */}
+          <div
+            ref={containerRef}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleDirectFileUpload(e.dataTransfer.files);
+              }
+            }}
+            className="relative w-full min-h-[380px] bg-zinc-950 rounded-xl border border-zinc-800 overflow-hidden flex items-center justify-center p-2"
+          >
+            {isLoadingPage ? (
+              <div className="text-center py-12 flex flex-col items-center justify-center gap-2 text-zinc-400">
+                <RefreshCw className="w-6 h-6 text-[#1DB954] animate-spin" />
+                <p className="text-xs">Loading page...</p>
               </div>
-            )}
-          </div>
-
-          {/* Interactive Stacked Canvas Area */}
-          <div className="relative w-full aspect-[4/3] bg-zinc-950 rounded-xl border border-zinc-800 overflow-hidden flex items-center justify-center p-2">
-            {!sourceImageSrc ? (
-              <div className="text-center py-12 flex flex-col items-center justify-center gap-2 text-zinc-500">
-                <Upload className="w-10 h-10 text-zinc-600" />
-                <p className="text-xs font-bold text-zinc-400">No Image Loaded</p>
-                <p className="text-[11px] text-zinc-500">Select a document page or upload an image file</p>
+            ) : !sourceImageSrc ? (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="text-center py-12 flex flex-col items-center justify-center gap-2.5 text-zinc-400 cursor-pointer hover:text-zinc-200 transition-colors w-full h-full border-2 border-dashed border-zinc-800 rounded-lg p-6 bg-zinc-900/30"
+              >
+                <Upload className="w-7 h-7 text-[#1DB954]" />
+                <p className="text-xs font-semibold text-zinc-200">Click or Drag & Drop PDF / Image here</p>
               </div>
             ) : (
-              <div className="relative max-w-full max-h-full inline-block cursor-crosshair select-none">
-                {/* Layer 1: Source Image Canvas */}
-                <canvas ref={imageCanvasRef} className="block max-w-full max-h-[380px] object-contain rounded" />
-
-                {/* Layer 2: Red Mask Overlay Canvas */}
+              <div className="relative inline-block max-w-full max-h-[460px] cursor-crosshair select-none">
                 <canvas
-                  ref={maskCanvasRef}
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  onMouseLeave={handleMouseUp}
-                  className="absolute inset-0 max-w-full max-h-[380px] object-contain pointer-events-auto"
+                  ref={imageCanvasRef}
+                  className="block max-w-full max-h-[440px] w-auto h-auto object-contain rounded shadow"
                 />
-
-                {/* Layer 3: Rectangle Drag Overlay Canvas */}
+                <canvas ref={maskCanvasRef} className="hidden" />
                 <canvas
-                  ref={rectOverlayCanvasRef}
-                  className="absolute inset-0 max-w-full max-h-[380px] object-contain pointer-events-none"
+                  ref={overlayCanvasRef}
+                  onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
+                  onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
+                  onMouseUp={(e) => handlePointerUp(e.clientX, e.clientY)}
+                  onMouseLeave={() => handlePointerUp()}
+                  onTouchStart={(e) => {
+                    if (e.touches[0]) handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+                  }}
+                  onTouchMove={(e) => {
+                    if (e.touches[0]) handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+                  }}
+                  onTouchEnd={() => handlePointerUp()}
+                  className="absolute inset-0 max-w-full max-h-[440px] w-full h-full object-contain pointer-events-auto touch-none"
                 />
               </div>
             )}
           </div>
 
-          {/* Error Message Toast */}
           {errorMessage && (
-            <div className="p-3 rounded-lg bg-rose-950/80 border border-rose-800 text-rose-200 text-xs flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="p-2.5 rounded-lg bg-rose-950/80 border border-rose-800 text-rose-200 text-xs">
+              {errorMessage}
             </div>
           )}
 
-          {/* Process Trigger Button */}
+          {/* Primary Action Button */}
           <button
             onClick={handleProcessInpaint}
-            disabled={isProcessing || !hasPermission || !sourceImageSrc}
-            className="w-full flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs py-3 rounded-full transition-all shadow-[0_0_20px_rgba(29,185,84,0.3)] disabled:opacity-40 disabled:shadow-none cursor-pointer"
+            disabled={isProcessing || !sourceImageSrc || spots.length === 0}
+            className="w-full flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-bold text-xs py-3 rounded-lg transition-colors disabled:opacity-40 cursor-pointer shadow-md"
           >
             <Sparkles className={`w-4 h-4 ${isProcessing ? "animate-spin" : ""}`} />
             <span>
               {isProcessing
-                ? progressStatus || "PROCESSING WATERMARK REMOVAL..."
-                : "REMOVE WATERMARK & CLEAN AREA"}
+                ? "Removing Watermark..."
+                : spots.length === 0
+                ? "Select Watermark Spots"
+                : `Remove ${spots.length} Selected ${spots.length === 1 ? "Spot" : "Spots"}`}
             </span>
           </button>
         </div>
 
-        {/* RIGHT STAGE: Before & After Output Preview & Export */}
-        <div className="bg-[#181818] p-5 rounded-2xl border border-zinc-800 flex flex-col justify-between shadow-xl">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-2">
-                <Eye className="w-4 h-4 text-[#1DB954]" />
-                <span>Step 2: Before & After Output Preview</span>
-              </h3>
-
+        {/* RIGHT: Clean Output Stage */}
+        <div className="bg-[#181818] p-4 rounded-xl border border-zinc-800/90 flex flex-col justify-between shadow-lg">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between pb-1 border-b border-zinc-800">
+              <span className="text-xs font-bold text-zinc-300">Cleaned Result</span>
               {cleanedImageSrc && (
-                <span className="text-[10px] bg-emerald-950 text-[#1DB954] border border-emerald-500/40 px-2 py-0.5 rounded font-bold uppercase">
-                  Cleaned Successfully
+                <span className="text-[11px] text-[#1DB954] font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Ready</span>
                 </span>
               )}
             </div>
 
             {!cleanedImageSrc ? (
-              <div className="w-full aspect-[4/3] bg-zinc-900 rounded-xl border border-dashed border-zinc-800 flex flex-col items-center justify-center text-center p-6 text-zinc-500 my-auto">
-                <Split className="w-12 h-12 text-zinc-700 mb-2" />
-                <p className="text-xs font-bold text-zinc-400">Preview Output Will Appear Here</p>
-                <p className="text-[11px] text-zinc-500 mt-1 max-w-xs">
-                  Mark the watermark area on the left stage and click "REMOVE WATERMARK & CLEAN AREA".
-                </p>
+              <div className="w-full aspect-[4/3] min-h-[340px] bg-zinc-950 rounded-xl border border-dashed border-zinc-800 flex flex-col items-center justify-center text-center p-6 text-zinc-500 my-auto">
+                <ImageIcon className="w-8 h-8 text-zinc-700 mb-2" />
+                <p className="text-xs font-medium text-zinc-400">Result will appear here</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
-                {/* Side by Side Comparison Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-[#202020] p-3 rounded-xl border border-zinc-800 flex flex-col gap-2">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      Original Image
-                    </span>
-                    <div className="w-full aspect-[3/4] bg-zinc-950 rounded overflow-hidden flex items-center justify-center p-1">
-                      {sourceImageSrc && (
-                        <img src={sourceImageSrc} alt="Original" className="w-full h-full object-contain" />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-[#202020] p-3 rounded-xl border border-zinc-800 flex flex-col gap-2">
-                    <span className="text-[10px] font-bold text-[#1DB954] uppercase tracking-wider">
-                      Cleaned Output
-                    </span>
-                    <div className="w-full aspect-[3/4] bg-zinc-950 rounded overflow-hidden flex items-center justify-center p-1 border border-[#1DB954]/40">
-                      <img src={cleanedImageSrc} alt="Cleaned Output" className="w-full h-full object-contain" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Metadata details */}
-                <div className="bg-[#202020] p-3 rounded-xl border border-zinc-800 flex items-center justify-between text-xs text-zinc-400">
-                  <span>Processing Engine: Content-Aware Inpainting</span>
-                  <span className="text-[#1DB954] font-bold">100% Quality Preserved</span>
-                </div>
+              <div className="w-full aspect-[4/3] max-h-[420px] bg-zinc-950 rounded-xl border border-zinc-800 flex items-center justify-center p-2 overflow-hidden">
+                <img src={cleanedImageSrc} alt="Cleaned Result" className="max-w-full max-h-full object-contain rounded" />
               </div>
             )}
           </div>
 
-          {/* Export Action Buttons */}
+          {/* Export Actions */}
           {cleanedImageSrc && (
-            <div className="mt-4 pt-4 border-t border-zinc-800 flex flex-col sm:flex-row items-center gap-3">
+            <div className="mt-3 pt-3 border-t border-zinc-800 flex items-center gap-2.5">
               <button
                 onClick={handleDownloadImage}
-                className="w-full sm:w-1/2 flex items-center justify-center gap-2 bg-zinc-100 hover:bg-white text-zinc-900 font-extrabold text-xs py-3 rounded-full transition-all shadow-md cursor-pointer"
+                className="flex-1 flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold text-xs py-2.5 rounded-lg transition-colors border border-zinc-700 cursor-pointer"
               >
-                <Download className="w-4 h-4 stroke-[2.5]" />
-                <span>SAVE CLEANED PNG</span>
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>Save Image</span>
               </button>
 
               <button
                 onClick={handleExportAsPdf}
-                className="w-full sm:w-1/2 flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs py-3 rounded-full transition-all shadow-md cursor-pointer"
+                className="flex-1 flex items-center justify-center gap-1.5 bg-[#1DB954] hover:bg-[#1ed760] text-black font-bold text-xs py-2.5 rounded-lg transition-colors cursor-pointer shadow-md"
               >
-                <FileText className="w-4 h-4 stroke-[2.5]" />
-                <span>EXPORT TO PDF</span>
+                <Download className="w-3.5 h-3.5" />
+                <span>Save as PDF</span>
               </button>
             </div>
           )}
