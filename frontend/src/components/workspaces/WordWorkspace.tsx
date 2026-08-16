@@ -13,24 +13,29 @@ import {
 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import { PDFFileItem } from "../../types";
-import { apiConvertWordToPdf } from "../../lib/api";
+import { apiConvertWordToPdf, apiRecordDownload, UserProfile } from "../../lib/api";
 import { pdfToWordDocx, downloadWordBlob } from "../../lib/wordEngine";
 import { downloadPdfBytes } from "../../lib/pdfEngine";
 import { soundEffects } from "../../lib/audio";
+import { recordDownloadedDoc } from "../../lib/docStorage";
 
 interface WordWorkspaceProps {
   mode: "word-to-pdf" | "pdf-to-word";
   activeFile: PDFFileItem | null;
+  user?: UserProfile | null;
   onOpenFilePicker: () => void;
   onOpenInEditor?: (html: string, filename: string) => void;
   onSaveToCloud?: (fileOrBytes: Uint8Array | Blob, filename: string, op: string) => void;
+  onDownloadRecorded?: () => void;
 }
 
 export const WordWorkspace: React.FC<WordWorkspaceProps> = ({
   mode,
   activeFile,
+  user,
   onOpenFilePicker,
   onSaveToCloud,
+  onDownloadRecorded,
 }) => {
   // Word → PDF State
   const [selectedWordFile, setSelectedWordFile] = useState<File | null>(null);
@@ -124,15 +129,37 @@ export const WordWorkspace: React.FC<WordWorkspaceProps> = ({
     if (!activeFile) return;
     soundEffects.playClick();
     setIsConvertingPdfToWord(true);
+    setWordError(null);
 
     try {
       const docxBlob = await pdfToWordDocx(activeFile.file);
       setGeneratedDocxBlob(docxBlob);
       soundEffects.playSuccess();
-      downloadWordBlob(docxBlob, `${activeFile.name.replace(/\.[^/.]+$/, "")}.docx`);
+      const outputFilename = `${activeFile.name.replace(/\.[^/.]+$/, "")}.docx`;
+      downloadWordBlob(docxBlob, outputFilename);
+
+      // Track download in backend PostgreSQL and local storage
+      if (user) {
+        try {
+          await apiRecordDownload(docxBlob, outputFilename, "PDF to Word");
+          onDownloadRecorded?.();
+        } catch (backendErr) {
+          console.warn("Backend download recording warning:", backendErr);
+        }
+      } else {
+        await recordDownloadedDoc(
+          outputFilename,
+          docxBlob.size,
+          activeFile.pagesCount || 1,
+          "PDF to Word",
+          docxBlob,
+          activeFile.backendDocId
+        );
+        onDownloadRecorded?.();
+      }
     } catch (err: any) {
       console.error("PDF to Word conversion error:", err);
-      alert(`PDF to Word Failed: ${err?.message || "Error converting PDF pages to Word"}`);
+      setWordError(err?.message || "Error converting PDF pages to Word document");
     } finally {
       setIsConvertingPdfToWord(false);
     }
@@ -366,7 +393,9 @@ export const WordWorkspace: React.FC<WordWorkspaceProps> = ({
               <FileCode className="w-6 h-6 text-[#1DB954]" />
               <div>
                 <span className="text-xs font-bold text-white block">{activeFile.name}</span>
-                <span className="text-[11px] text-zinc-400 font-semibold">Ready for Word Conversion</span>
+                <span className="text-[11px] text-zinc-400 font-semibold">
+                  {activeFile.pagesCount} Pages • {formatBytes(activeFile.size)} • Ready for Word Conversion
+                </span>
               </div>
             </div>
           </div>
@@ -380,18 +409,25 @@ export const WordWorkspace: React.FC<WordWorkspaceProps> = ({
             <span>{isConvertingPdfToWord ? "CONVERTING PDF TO WORD..." : "CONVERT PDF TO WORD (.DOCX)"}</span>
           </button>
 
-          {generatedDocxBlob && (
-            <div className="bg-emerald-950/60 p-4 rounded-xl border border-emerald-500/30 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold">
-                <CheckCircle2 className="w-4 h-4 text-[#1DB954]" />
-                <span>Word Document (.docx) Downloaded!</span>
+          {wordError && (
+            <div className="p-4 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-200 text-xs flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-bold block">Conversion Failed</span>
+                <span className="text-zinc-300 mt-0.5 block">{wordError}</span>
               </div>
-              <button
-                onClick={() => downloadWordBlob(generatedDocxBlob, `${activeFile.name.replace(/\.[^/.]+$/, "")}.docx`)}
-                className="bg-white hover:bg-zinc-100 text-black font-bold px-4 py-2 rounded-lg transition-colors cursor-pointer"
-              >
-                Download Again
-              </button>
+            </div>
+          )}
+
+          {generatedDocxBlob && !wordError && (
+            <div className="bg-emerald-950/60 p-4 rounded-xl border border-emerald-500/30 flex items-center gap-3 text-xs">
+              <CheckCircle2 className="w-5 h-5 text-[#1DB954] shrink-0" />
+              <div>
+                <span className="text-emerald-300 font-bold block">✓ Word Document (.docx) Downloaded</span>
+                <span className="text-zinc-400 text-[11px]">
+                  {activeFile.name.replace(/\.[^/.]+$/, "")}.docx is ready and saved to your device.
+                </span>
+              </div>
             </div>
           )}
         </div>

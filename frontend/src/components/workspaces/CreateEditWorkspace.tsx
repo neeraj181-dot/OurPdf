@@ -829,7 +829,7 @@ export const CreateEditWorkspace: React.FC<CreateEditWorkspaceProps> = ({
 
             {/* Document Footer & Page Numbering */}
             <div className="pt-4 mt-6 border-t border-zinc-200 text-xs text-zinc-400 flex items-center justify-between">
-              <span>{footerText || "Easy PDF Document"}</span>
+              <span>{footerText || "OurPDF Document"}</span>
               {showPageNumbers && (
                 <span className="font-semibold text-zinc-600">
                   Page {currentPage.pageNumber} of {pages.length}

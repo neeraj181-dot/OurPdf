@@ -2,7 +2,7 @@
  * Frontend API Service Layer for Authentication, Documents, and History
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5000/api";
 
 export interface UserProfile {
   id: number;
@@ -38,15 +38,47 @@ export interface ProcessingHistoryItem {
   created_at: string;
 }
 
+export interface DownloadRecord {
+  id: number;
+  user_id: number;
+  filename: string;
+  file_type: string;
+  file_size: number;
+  tool_used?: string;
+  has_stored_file: boolean;
+  downloaded_at: string;
+}
+
+export interface GoogleDriveStatus {
+  connected: boolean;
+  google_account_id?: string;
+  google_email?: string;
+  google_name?: string;
+  google_picture?: string;
+  connected_at?: string;
+}
+
+export interface GoogleDriveFile {
+  id: string;
+  name: string;
+  mime_type: string;
+  size?: number;
+  modified_time?: string;
+  thumbnail_link?: string;
+  web_view_link?: string;
+  icon_link?: string;
+}
+
 // Token Helpers
 export function getStoredToken(): string | null {
-  return localStorage.getItem("easypdf_access_token");
+  return localStorage.getItem("ourpdf_access_token") || localStorage.getItem("easypdf_access_token");
 }
 
 export function setStoredToken(token: string | null) {
   if (token) {
-    localStorage.setItem("easypdf_access_token", token);
+    localStorage.setItem("ourpdf_access_token", token);
   } else {
+    localStorage.removeItem("ourpdf_access_token");
     localStorage.removeItem("easypdf_access_token");
   }
 }
@@ -98,6 +130,42 @@ export async function apiGetMe(): Promise<UserProfile> {
 
   if (!res.ok) {
     throw new Error("Session expired");
+  }
+
+  return await res.json();
+}
+
+export async function apiUpdateProfile(name: string): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE_URL}/auth/profile`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ name }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to update profile" }));
+    throw new Error(err.detail || "Failed to update profile");
+  }
+
+  return await res.json();
+}
+
+export async function apiChangePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+  const res = await fetch(`${API_BASE_URL}/auth/change-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to change password" }));
+    throw new Error(err.detail || "Failed to change password");
   }
 
   return await res.json();
@@ -160,6 +228,24 @@ export async function apiDeleteDocument(docId: number): Promise<void> {
   if (!res.ok) {
     throw new Error("Failed to delete document");
   }
+}
+
+export async function apiRenameDocument(docId: number, originalFilename: string): Promise<SavedDocument> {
+  const res = await fetch(`${API_BASE_URL}/documents/${docId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ original_filename: originalFilename }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to rename document" }));
+    throw new Error(err.detail || "Failed to rename document");
+  }
+
+  return await res.json();
 }
 
 // 3. PROCESSING HISTORY API
@@ -233,14 +319,15 @@ export async function apiConvertWordToPdf(file: File): Promise<Uint8Array> {
 export async function apiInpaintImage(
   imageSrc: string,
   maskDataUrl: string,
-  method: "telea" | "ns" = "telea",
+  method: "telea" | "ns" | "smart" | string = "telea",
   radius = 5,
   dilate = 4
 ): Promise<string> {
+  const finalMethod = method === "smart" ? "telea" : method;
   const formData = new FormData();
   formData.append("image_base64", imageSrc);
   formData.append("mask_base64", maskDataUrl);
-  formData.append("method", method);
+  formData.append("method", finalMethod);
   formData.append("radius", radius.toString());
   formData.append("dilate", dilate.toString());
 
@@ -263,5 +350,182 @@ export async function apiInpaintImage(
     reader.onload = (e) => resolve(e.target?.result as string);
     reader.readAsDataURL(blob);
   });
+}
+
+// 6. DOWNLOADS API
+export async function apiGetDownloads(): Promise<DownloadRecord[]> {
+  const res = await fetch(`${API_BASE_URL}/downloads`, {
+    headers: { ...getAuthHeaders() },
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to fetch download history");
+  }
+  return res.json();
+}
+
+export async function apiRecordDownload(
+  fileOrBlobOrBytes: Blob | File | Uint8Array,
+  filename: string,
+  toolUsed = "Export"
+): Promise<DownloadRecord> {
+  const formData = new FormData();
+  let blob: Blob;
+  if (fileOrBlobOrBytes instanceof Blob) {
+    blob = fileOrBlobOrBytes;
+  } else if (fileOrBlobOrBytes instanceof Uint8Array) {
+    blob = new Blob([fileOrBlobOrBytes], {
+      type: filename.toLowerCase().endsWith(".docx")
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : filename.toLowerCase().endsWith(".pdf")
+        ? "application/pdf"
+        : "application/octet-stream",
+    });
+  } else {
+    blob = new Blob([fileOrBlobOrBytes]);
+  }
+
+  formData.append("file", blob, filename);
+  formData.append("filename", filename);
+  formData.append("file_size", blob.size.toString());
+  formData.append("tool_used", toolUsed);
+
+  const res = await fetch(`${API_BASE_URL}/downloads`, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to record download" }));
+    throw new Error(err.detail || "Failed to record download");
+  }
+
+  return res.json();
+}
+
+export async function apiDownloadStoredFile(downloadId: number): Promise<Blob> {
+  const res = await fetch(`${API_BASE_URL}/downloads/${downloadId}/download`, {
+    headers: { ...getAuthHeaders() },
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to download stored file");
+  }
+  return res.blob();
+}
+
+export async function apiDeleteDownloadRecord(downloadId: number): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/downloads/${downloadId}`, {
+    method: "DELETE",
+    headers: { ...getAuthHeaders() },
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to delete download record");
+  }
+}
+
+// 7. GOOGLE DRIVE INTEGRATION API
+export async function apiGetGoogleDriveStatus(): Promise<GoogleDriveStatus> {
+  const res = await fetch(`${API_BASE_URL}/integrations/google-drive/status`, {
+    headers: { ...getAuthHeaders() },
+  });
+
+  if (!res.ok) {
+    return { connected: false };
+  }
+  return res.json();
+}
+
+export async function apiGetGoogleDriveAuthUrl(): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/integrations/google-drive/auth-url`, {
+    headers: { ...getAuthHeaders() },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to generate Google auth URL" }));
+    throw new Error(err.detail || "Failed to generate Google auth URL");
+  }
+  const data = await res.json();
+  return data.auth_url;
+}
+
+export async function apiGetGoogleDriveFiles(search?: string, pageToken?: string): Promise<{ files: GoogleDriveFile[]; next_page_token?: string }> {
+  const params = new URLSearchParams();
+  if (search) params.append("search", search);
+  if (pageToken) params.append("page_token", pageToken);
+
+  const res = await fetch(`${API_BASE_URL}/integrations/google-drive/files?${params.toString()}`, {
+    headers: { ...getAuthHeaders() },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to list Google Drive files" }));
+    throw new Error(err.detail || "Failed to list Google Drive files");
+  }
+  return res.json();
+}
+
+export async function apiDownloadGoogleDriveFile(fileId: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE_URL}/integrations/google-drive/files/${fileId}/download`, {
+    headers: { ...getAuthHeaders() },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to download file from Google Drive" }));
+    throw new Error(err.detail || "Failed to download file from Google Drive");
+  }
+  return res.blob();
+}
+
+export async function apiUploadToGoogleDrive(
+  fileOrBlobOrBytes: Blob | File | Uint8Array,
+  filename: string
+): Promise<{ id: string; name: string; web_view_link?: string }> {
+  const formData = new FormData();
+  let blob: Blob;
+  if (fileOrBlobOrBytes instanceof Blob) {
+    blob = fileOrBlobOrBytes;
+  } else if (fileOrBlobOrBytes instanceof Uint8Array) {
+    blob = new Blob([fileOrBlobOrBytes], {
+      type: filename.toLowerCase().endsWith(".docx")
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : filename.toLowerCase().endsWith(".png")
+        ? "image/png"
+        : "application/pdf",
+    });
+  } else {
+    blob = new Blob([fileOrBlobOrBytes]);
+  }
+
+  formData.append("file", blob, filename);
+  formData.append("filename", filename);
+
+  const res = await fetch(`${API_BASE_URL}/integrations/google-drive/upload`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to upload file to Google Drive" }));
+    throw new Error(err.detail || "Failed to upload file to Google Drive");
+  }
+  return res.json();
+}
+
+export async function apiDisconnectGoogleDrive(): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/integrations/google-drive/disconnect`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to disconnect Google Drive" }));
+    throw new Error(err.detail || "Failed to disconnect Google Drive");
+  }
 }
 

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
-import { Upload, Plus, Sparkles, CheckCircle2, FileText, Layers, Zap } from "lucide-react";
+import { Upload, Plus, Sparkles, CheckCircle2, FileText, Zap } from "lucide-react";
 import { PDFFileItem, ToolCategory, WatermarkOptions, PageNumberOptions } from "./types";
 import {
   processPdfFile,
@@ -17,6 +17,14 @@ import {
 } from "./lib/pdfEngine";
 import { PDF_TOOLS } from "./data/toolsData";
 import { soundEffects } from "./lib/audio";
+import {
+  savePersistentDoc,
+  getPersistentDocs,
+  deletePersistentDoc,
+  updatePersistentDocName,
+  updatePersistentDocBackendId,
+  recordDownloadedDoc,
+} from "./lib/docStorage";
 
 import { SpotifySidebar } from "./components/SpotifySidebar";
 import { SpotifyHeader } from "./components/SpotifyHeader";
@@ -34,9 +42,22 @@ import { CreateEditWorkspace } from "./components/workspaces/CreateEditWorkspace
 import { CompressWorkspace } from "./components/workspaces/CompressWorkspace";
 import { WordWorkspace } from "./components/workspaces/WordWorkspace";
 import { MyDocumentsWorkspace } from "./components/workspaces/MyDocumentsWorkspace";
+import { ProfileWorkspace } from "./components/workspaces/ProfileWorkspace";
 import { SecuritySearchWorkspace } from "./components/workspaces/SecuritySearchWorkspace";
 import { AuthModal } from "./components/AuthModal";
-import { UserProfile, apiGetMe, apiLogout, getStoredToken, apiSaveDocument } from "./lib/api";
+import { RenameDocModal } from "./components/RenameDocModal";
+import { GoogleDrivePickerModal } from "./components/GoogleDrivePickerModal";
+import {
+  UserProfile,
+  apiGetMe,
+  apiLogout,
+  getStoredToken,
+  apiSaveDocument,
+  apiRenameDocument,
+  apiGetDocuments,
+  apiRecordDownload,
+  apiUploadToGoogleDrive,
+} from "./lib/api";
 
 export default function App() {
   // User Authentication State
@@ -45,27 +66,25 @@ export default function App() {
   const [authModalMode, setAuthModalMode] = useState<"login" | "register">("login");
   const [authModalSubtitle, setAuthModalSubtitle] = useState<string | undefined>(undefined);
   const [isSavedToCloud, setIsSavedToCloud] = useState(false);
+  const [isSavedToGoogleDrive, setIsSavedToGoogleDrive] = useState(false);
+  const [isSavingToGoogleDrive, setIsSavingToGoogleDrive] = useState(false);
+  const [isDrivePickerOpen, setIsDrivePickerOpen] = useState(false);
   const [cloudNotification, setCloudNotification] = useState<string | null>(null);
 
   // Loaded PDFs state
   const [files, setFiles] = useState<PDFFileItem[]>([]);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
 
-  // Load user on mount if token exists
-  useEffect(() => {
-    if (getStoredToken()) {
-      apiGetMe()
-        .then((u) => setUser(u))
-        .catch(() => apiLogout());
-    }
-  }, []);
-
   // Navigation & Search State
-  const [activeView, setActiveView] = useState<string>("home"); // "home" | "browse" | "ai-lab"
+  const [activeView, setActiveView] = useState<string>("home"); // "home" | "browse" | "editor" | "my-docs" | "profile"
+  const [myDocsTab, setMyDocsTab] = useState<"saved" | "downloads" | "recent">("saved");
   const [activeToolId, setActiveToolId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<ToolCategory>("all");
   const [activeAiTab, setActiveAiTab] = useState<"summary" | "chat" | "ocr" | "translate" | "extract">("summary");
+
+  // Rename modal for active documents
+  const [renameTarget, setRenameTarget] = useState<PDFFileItem | null>(null);
 
   // Processing & Output Bytes State
   const [isProcessing, setIsProcessing] = useState(false);
@@ -79,11 +98,44 @@ export default function App() {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [docsRefreshKey, setDocsRefreshKey] = useState(0);
+
+  // Load user, persistent documents, and URL query params on mount
+  useEffect(() => {
+    // 1. Check if returning from Google Drive OAuth redirect
+    const urlParams = new URLSearchParams(window.location.search);
+    if (
+      urlParams.get("google_drive_status") === "success" ||
+      urlParams.get("google_drive") === "connected"
+    ) {
+      soundEffects.playSuccess();
+      setDocsRefreshKey((k) => k + 1);
+      // Clean query params without reloading
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    if (getStoredToken()) {
+      apiGetMe()
+        .then((u) => setUser(u))
+        .catch(() => apiLogout());
+    }
+
+    // Restore active documents from IndexedDB
+    getPersistentDocs()
+      .then((persisted) => {
+        if (persisted && persisted.length > 0) {
+          setFiles(persisted);
+          setActiveFileId(persisted[0].id);
+        }
+      })
+      .catch((err) => console.warn("Could not load persisted files:", err));
+  }, []);
+
   // Active File object
   const activeFile = files.find((f) => f.id === activeFileId) || files[0] || null;
 
   // Handle Uploading PDF and Image Files
-  const handleFileUpload = async (uploadedFiles: FileList | File[]) => {
+  const handleFileUpload = async (uploadedFiles: FileList | File[], existingBackendDocId?: number) => {
     const fileList = Array.from(uploadedFiles);
     if (fileList.length === 0) return;
 
@@ -94,14 +146,37 @@ export default function App() {
       const newItems: PDFFileItem[] = [];
 
       for (const file of fileList) {
+        // Check if file is already loaded in files list
+        const existing = files.find(
+          (f) =>
+            (existingBackendDocId && f.backendDocId === existingBackendDocId) ||
+            f.name === file.name
+        );
+        if (existing) {
+          setActiveFileId(existing.id);
+          continue;
+        }
+
         const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type.toLowerCase().includes("pdf");
         const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(file.name);
 
         if (isPdf) {
           try {
             const processed = await processPdfFile(file);
+            let backendDocId: number | undefined = existingBackendDocId;
+
+            // If user is authenticated and not already a saved backend document, save to backend
+            if (user && !backendDocId) {
+              try {
+                const savedDoc = await apiSaveDocument(file, file.name, "upload");
+                backendDocId = savedDoc.id;
+              } catch (e) {
+                console.warn("Backend cloud sync error:", e);
+              }
+            }
+
             const item: PDFFileItem = {
-              id: `file-${Date.now()}-${Math.random()}`,
+              id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
               file,
               name: file.name,
               size: file.size,
@@ -109,7 +184,11 @@ export default function App() {
               pageThumbnails: processed.pageThumbnails,
               extractedText: processed.fullText,
               pageTexts: processed.pageTexts,
+              backendDocId,
             };
+
+            // Save to IndexedDB persistence
+            await savePersistentDoc(item, backendDocId);
             newItems.push(item);
           } catch (fileErr: any) {
             console.error(`Error processing file ${file.name}:`, fileErr);
@@ -124,8 +203,18 @@ export default function App() {
               reader.readAsDataURL(file);
             });
 
+            let backendDocId: number | undefined = undefined;
+            if (user) {
+              try {
+                const savedDoc = await apiSaveDocument(file, file.name, "upload");
+                backendDocId = savedDoc.id;
+              } catch (e) {
+                console.warn("Backend cloud sync error:", e);
+              }
+            }
+
             const item: PDFFileItem = {
-              id: `file-${Date.now()}-${Math.random()}`,
+              id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
               file,
               name: file.name,
               size: file.size,
@@ -133,7 +222,10 @@ export default function App() {
               pageThumbnails: [dataUrl],
               extractedText: "",
               pageTexts: [""],
+              backendDocId,
             };
+
+            await savePersistentDoc(item, backendDocId);
             newItems.push(item);
           } catch (imgErr: any) {
             console.error(`Error reading image ${file.name}:`, imgErr);
@@ -147,6 +239,7 @@ export default function App() {
       if (newItems.length > 0) {
         setFiles((prev) => [...prev, ...newItems]);
         setActiveFileId(newItems[0].id);
+        setDocsRefreshKey((k) => k + 1);
         soundEffects.playSuccess();
       }
     } catch (e: any) {
@@ -160,6 +253,7 @@ export default function App() {
   // Remove File
   const handleRemoveFile = (id: string) => {
     soundEffects.playClick();
+    deletePersistentDoc(id);
     setFiles((prev) => {
       const filtered = prev.filter((f) => f.id !== id);
       if (activeFileId === id && filtered.length > 0) {
@@ -169,6 +263,73 @@ export default function App() {
       }
       return filtered;
     });
+  };
+
+  // Rename File (Synchronizes across Active Documents, IndexedDB, and Backend Saved Documents)
+  const handleRenameFile = async (id: string, newName: string) => {
+    soundEffects.playClick();
+    const extMatch = newName.match(/\.([a-zA-Z0-9]+)$/);
+    const finalName = extMatch ? newName : `${newName}.pdf`;
+
+    const target = files.find((f) => f.id === id);
+    if (!target) return;
+
+    // 1. Update in-memory files state with renamed File instance
+    const updatedFile = new File([target.file], finalName, {
+      type: target.file.type || "application/pdf",
+    });
+
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.id === id ? { ...f, name: finalName, file: updatedFile } : f
+      )
+    );
+
+    // 2. Update local IndexedDB storage
+    await updatePersistentDocName(id, finalName);
+
+    // 3. Update backend cloud document if user is authenticated
+    if (user) {
+      try {
+        if (target.backendDocId) {
+          await apiRenameDocument(target.backendDocId, finalName);
+        } else {
+          // Find matching backend document by old original filename
+          const userDocs = await apiGetDocuments();
+          const match = userDocs.find(
+            (d) => d.original_filename === target.name || d.original_filename === target.file.name
+          );
+          if (match) {
+            await apiRenameDocument(match.id, finalName);
+            target.backendDocId = match.id;
+            await updatePersistentDocBackendId(id, match.id);
+          }
+        }
+      } catch (err) {
+        console.warn("Backend rename sync warning:", err);
+      }
+    }
+
+    // 4. Trigger reload in Saved Documents workspace
+    setDocsRefreshKey((k) => k + 1);
+    soundEffects.playSuccess();
+  };
+
+  // Rename Handler from Workspace Saved Documents
+  const handleRenameFromWorkspace = async (backendDocId: number, newFilename: string) => {
+    const matching = files.find((f) => f.backendDocId === backendDocId);
+    if (matching) {
+      const updatedFile = new File([matching.file], newFilename, {
+        type: matching.file.type || "application/pdf",
+      });
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === matching.id ? { ...f, name: newFilename, file: updatedFile } : f
+        )
+      );
+      await updatePersistentDocName(matching.id, newFilename);
+    }
+    setDocsRefreshKey((k) => k + 1);
   };
 
   // Filter tools based on search and category
@@ -290,7 +451,6 @@ export default function App() {
     if (!activeFile || !pwd) return;
     setIsProcessing(true);
     try {
-      // Return file bytes with encrypted filename indicator
       const buffer = await activeFile.file.arrayBuffer();
       setDownloadBytes(new Uint8Array(buffer));
       setDownloadFileName(`Protected_${activeFile.name}`);
@@ -314,6 +474,74 @@ export default function App() {
       console.error(e);
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // Bottom PlayerBar action handler: Select Tool navigation & Tool Execution
+  const handlePlayerBarAction = () => {
+    if (!activeFile) {
+      alert("Please select a document first.");
+      return;
+    }
+
+    if (!activeToolId) {
+      // User clicked "Select Tool ->": Navigate to All PDF Tools with activeFile preserved
+      soundEffects.playClick();
+      setActiveView("browse");
+      setActiveToolId(null);
+      return;
+    }
+
+    // Execute active tool processing action
+    if (activeToolId === "merge") {
+      handleRunMerge();
+    } else if (
+      activeToolId === "organize" ||
+      activeToolId === "rotate" ||
+      activeToolId === "extract" ||
+      activeToolId === "split"
+    ) {
+      handleRunOrganize(
+        Array.from({ length: activeFile.pagesCount }, (_, i) => ({
+          originalIndex: i,
+          rotation: 0,
+        }))
+      );
+    } else if (activeToolId === "watermark") {
+      handleRunWatermark({
+        text: "CONFIDENTIAL",
+        color: "#ff0000",
+        opacity: 0.4,
+        fontSize: 36,
+        rotation: -45,
+        position: "center",
+      });
+    } else if (activeToolId === "compress") {
+      handleRunCompress(0.7);
+    }
+  };
+
+  const handleDownloadAndRecord = async () => {
+    if (!downloadBytes) return;
+    soundEffects.playSuccess();
+    downloadPdfBytes(downloadBytes, downloadFileName);
+
+    const toolTitle = activeToolObj?.title || "Export";
+
+    // Track download in backend PostgreSQL (if authenticated) and local persistence
+    if (user) {
+      apiRecordDownload(downloadBytes, downloadFileName, toolTitle)
+        .then(() => setDocsRefreshKey((k) => k + 1))
+        .catch((err) => console.warn("Backend download recording warning:", err));
+    } else {
+      await recordDownloadedDoc(
+        downloadFileName,
+        downloadBytes.length,
+        activeFile?.pagesCount || 1,
+        toolTitle,
+        new Blob([downloadBytes], { type: "application/pdf" })
+      );
+      setDocsRefreshKey((k) => k + 1);
     }
   };
 
@@ -353,6 +581,37 @@ export default function App() {
     }
   };
 
+  const handleSaveToGoogleDrive = async (
+    fileOrBlobOrBytes?: File | Blob | Uint8Array,
+    filename?: string
+  ) => {
+    const targetBytes = fileOrBlobOrBytes || downloadBytes;
+    const targetName = filename || downloadFileName;
+    if (!targetBytes) return;
+
+    if (!user) {
+      soundEffects.playClick();
+      setAuthModalMode("login");
+      setAuthModalSubtitle("Sign in to save this document to your Google Drive.");
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    soundEffects.playClick();
+    setIsSavingToGoogleDrive(true);
+    try {
+      await apiUploadToGoogleDrive(targetBytes, targetName);
+      soundEffects.playSuccess();
+      setIsSavedToGoogleDrive(true);
+      setCloudNotification(`✓ "${targetName}" saved to Google Drive!`);
+      setTimeout(() => setCloudNotification(null), 4000);
+    } catch (err: any) {
+      alert(`Google Drive Upload: ${err?.message || "Failed to save file to Google Drive. Please ensure Google Drive is connected in your profile."}`);
+    } finally {
+      setIsSavingToGoogleDrive(false);
+    }
+  };
+
   // Global Drag Events
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -385,7 +644,7 @@ export default function App() {
         type="file"
         ref={fileInputRef}
         multiple
-        accept="application/pdf,.pdf"
+        accept="application/pdf,.pdf,image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp,image/*"
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {
             handleFileUpload(e.target.files);
@@ -412,6 +671,7 @@ export default function App() {
           activeFileId={activeFileId}
           onSelectFile={(id) => setActiveFileId(id)}
           onRemoveFile={handleRemoveFile}
+          onRenameFile={handleRenameFile}
           onUploadClick={() => fileInputRef.current?.click()}
           onOpenFilePicker={() => fileInputRef.current?.click()}
           onDropFiles={handleFileUpload}
@@ -419,7 +679,8 @@ export default function App() {
           setActiveView={(view) => {
             setActiveView(view);
             if (view === "ai-lab") setActiveToolId("ai-summary");
-            if (view === "home") setActiveToolId(null);
+            if (view === "home" || view === "profile" || view === "my-docs") setActiveToolId(null);
+            if (view === "editor") setActiveToolId("create-pdf");
           }}
           onSelectPresetPipeline={handleSelectPresetPipeline}
           soundEnabled={soundEnabled}
@@ -446,6 +707,7 @@ export default function App() {
             selectedCategory={selectedCategory}
             setSelectedCategory={setSelectedCategory}
             onUploadClick={() => fileInputRef.current?.click()}
+            onOpenDrivePicker={() => setIsDrivePickerOpen(true)}
             activeToolId={activeToolId}
             onBackClick={() => {
               setActiveToolId(null);
@@ -462,19 +724,52 @@ export default function App() {
               setUser(null);
               soundEffects.playClick();
             }}
+            onNavigateToProfile={() => {
+              setActiveToolId(null);
+              setActiveView("profile");
+            }}
+            onNavigateToDocs={(tab) => {
+              setActiveToolId(null);
+              setMyDocsTab(tab || "saved");
+              setActiveView("my-docs");
+            }}
           />
 
           {/* Dynamic Scrollable Stage View */}
           <main className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-            {activeView === "my-docs" ? (
-              <MyDocumentsWorkspace
+            {activeView === "profile" ? (
+              <ProfileWorkspace
                 user={user}
+                onUpdateUser={(updated) => setUser(updated)}
                 onOpenAuthModal={(mode) => {
                   setAuthModalMode(mode || "login");
                   setAuthModalSubtitle(undefined);
                   setIsAuthModalOpen(true);
                 }}
-                onOpenDocument={(file) => handleFileUpload([file])}
+                onLogout={() => {
+                  apiLogout();
+                  setUser(null);
+                  setActiveView("home");
+                  soundEffects.playClick();
+                }}
+                onNavigateToDocs={(tab) => {
+                  setMyDocsTab(tab || "saved");
+                  setActiveView("my-docs");
+                }}
+              />
+            ) : activeView === "my-docs" ? (
+              <MyDocumentsWorkspace
+                user={user}
+                initialTab={myDocsTab}
+                refreshKey={docsRefreshKey}
+                activeFileName={activeFile?.name}
+                onOpenAuthModal={(mode) => {
+                  setAuthModalMode(mode || "login");
+                  setAuthModalSubtitle(undefined);
+                  setIsAuthModalOpen(true);
+                }}
+                onOpenDocument={(file, docId) => handleFileUpload([file], docId)}
+                onRenameDocument={handleRenameFromWorkspace}
               />
             ) : (
               <>
@@ -482,242 +777,285 @@ export default function App() {
                 {!activeToolId && (
                   <div className="flex flex-col gap-6">
                     {/* Clean Feature Header */}
-                <div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-6">
-                  <div className="max-w-xl text-center sm:text-left">
-                    <div className="flex items-center justify-center sm:justify-start gap-2 text-xs font-medium text-[#1DB954] uppercase tracking-wider">
-                      <FileText className="w-4 h-4 text-[#1DB954]" />
-                      <span>Easy PDF Document Processing</span>
-                    </div>
-                    <h2 className="text-2xl font-bold text-zinc-100 mt-1 tracking-tight leading-snug">
-                      Create, Edit & Organize PDF Documents
-                    </h2>
-                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed font-normal">
-                      Create new documents, edit text, insert images, organize pages, merge PDFs, optimize, and convert documents in one unified workspace.
-                    </p>
+                    <div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-6">
+                      <div className="max-w-xl text-center sm:text-left">
+                        <div className="flex items-center justify-center sm:justify-start gap-2 text-xs font-medium text-[#1DB954] uppercase tracking-wider">
+                          <FileText className="w-4 h-4 text-[#1DB954]" />
+                          <span>OurPDF Document Processing</span>
+                        </div>
+                        <h2 className="text-2xl font-bold text-zinc-100 mt-1 tracking-tight leading-snug">
+                          Create, Edit & Organize PDF Documents
+                        </h2>
+                        <p className="text-xs text-zinc-400 mt-2 leading-relaxed font-normal">
+                          Create new documents, edit text, insert images, organize pages, merge PDFs, optimize, and convert documents in one unified workspace.
+                        </p>
 
-                    <div className="flex items-center justify-center sm:justify-start gap-3 mt-4">
-                      <button
-                        onClick={() => {
-                          setActiveView("home");
+                        <div className="flex items-center justify-center sm:justify-start gap-3 mt-4">
+                          <button
+                            onClick={() => {
+                              setActiveView("home");
+                              setActiveToolId("create-pdf");
+                            }}
+                            className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors cursor-pointer shadow-md"
+                          >
+                            <Plus className="w-4 h-4 stroke-[2.5]" />
+                            <span>Create & Edit PDF</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleSelectTool("import-pdf")}
+                            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700/80 text-zinc-200 font-medium text-xs px-4 py-2.5 rounded-lg border border-zinc-700/60 transition-colors cursor-pointer"
+                          >
+                            <FileText className="w-4 h-4 text-[#1DB954]" />
+                            <span>Import PDF File</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Right Graphic Badge */}
+                      <div className="bg-zinc-900/80 border border-zinc-800 p-4 rounded-xl flex flex-col items-center gap-1.5 text-center shrink-0">
+                        <div className="w-10 h-10 rounded-lg bg-zinc-800 text-[#1DB954] border border-zinc-700/50 flex items-center justify-center font-bold">
+                          <Zap className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-semibold text-zinc-200">100% Client Engine</span>
+                        <span className="text-[11px] text-zinc-400 font-normal">Zero Server Data Retention</span>
+                      </div>
+                    </div>
+
+                    {/* Popular Tool Grid Section */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-base font-bold text-zinc-100 tracking-tight">
+                          {selectedCategory === "all" ? "All PDF Tools" : `Category: ${selectedCategory.toUpperCase()}`}
+                        </h3>
+                        <span className="text-xs text-zinc-400 font-normal">
+                          {filteredTools.length} tools available
+                        </span>
+                      </div>
+
+                      <ToolGrid
+                        tools={filteredTools}
+                        onSelectTool={handleSelectTool}
+                        activeFileName={activeFile?.name}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* VIEW 2: ACTIVE WORKSPACE TOOL STAGE */}
+                {activeToolId && (
+                  <div className="flex flex-col gap-6">
+                    {/* TOOL 1: MERGE */}
+                    {activeToolId === "merge" && (
+                      <MergeWorkspace
+                        files={files}
+                        onAddFilesClick={() => fileInputRef.current?.click()}
+                        onRemoveFile={handleRemoveFile}
+                        onReorderFiles={(newOrder) => setFiles(newOrder)}
+                        onRunMerge={handleRunMerge}
+                        isProcessing={isProcessing}
+                      />
+                    )}
+
+                    {/* TOOL 2: ORGANIZE & ROTATE & EXTRACT & SPLIT */}
+                    {(activeToolId === "organize" ||
+                      activeToolId === "rotate" ||
+                      activeToolId === "extract" ||
+                      activeToolId === "split") &&
+                      activeFile && (
+                        <OrganizeWorkspace
+                          activeFile={activeFile}
+                          onExport={handleRunOrganize}
+                          isProcessing={isProcessing}
+                        />
+                      )}
+
+                    {/* TOOL 3: WATERMARK & REMOVE WATERMARK */}
+                    {activeToolId === "watermark" && activeFile && (
+                      <WatermarkWorkspace
+                        activeFile={activeFile}
+                        onApplyWatermark={handleRunWatermark}
+                        isProcessing={isProcessing}
+                      />
+                    )}
+
+                    {activeToolId === "remove-watermark" && (
+                      <RemoveWatermarkWorkspace
+                        activeFile={activeFile}
+                        isProcessingGlobal={isProcessing}
+                        onUploadFile={handleFileUpload}
+                        onProcessedOutput={(bytes, filename) => {
+                          setDownloadBytes(bytes);
+                          setDownloadFileName(filename);
+                        }}
+                      />
+                    )}
+
+                    {/* TOOL 4: CREATE & EDIT PDF */}
+                    {(activeToolId === "create-pdf" ||
+                      activeToolId === "edit-pdf" ||
+                      activeToolId === "import-pdf" ||
+                      activeToolId === "add-text" ||
+                      activeToolId === "insert-image") && (
+                      <CreateEditWorkspace
+                        activeFile={activeFile}
+                        onUploadClick={() => handleSelectTool("merge")}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onSelectTool={handleSelectTool}
+                      />
+                    )}
+
+                    {/* TOOL 5: CONVERT */}
+                    {(activeToolId === "pdf-to-docx" ||
+                      activeToolId === "pdf-to-png" ||
+                      activeToolId === "pdf-to-jpg" ||
+                      activeToolId === "img-to-pdf" ||
+                      activeToolId === "img-to-svg" ||
+                      activeToolId === "pdf-to-markdown" ||
+                      activeToolId === "pdf-to-pdfa" ||
+                      activeToolId === "html-to-pdf") && (
+                      <ConvertWorkspace
+                        mode={activeToolId as any}
+                        activeFile={activeFile}
+                        onImagesToPdfRun={handleRunImagesToPdf}
+                        isProcessing={isProcessing}
+                      />
+                    )}
+
+                    {/* TOOL 6: ANNOTATE & UTILITIES */}
+                    {(activeToolId === "annotate" ||
+                      activeToolId === "drawing" ||
+                      activeToolId === "sign" ||
+                      activeToolId === "redact" ||
+                      activeToolId === "page-numbers" ||
+                      activeToolId === "lock") &&
+                      activeFile && (
+                        <AnnotateWorkspace
+                          mode={activeToolId as any}
+                          activeFile={activeFile}
+                          onPageNumbersRun={handleRunPageNumbers}
+                          onLockRun={handleRunLock}
+                          onCompressRun={handleRunCompress}
+                          isProcessing={isProcessing}
+                        />
+                      )}
+
+                    {/* TOOL 7: COMPRESS & REPAIR */}
+                    {(activeToolId === "compress" || activeToolId === "repair") && (
+                      <CompressWorkspace
+                        activeFile={activeFile}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                      />
+                    )}
+
+                    {/* TOOL 8: WORD CONVERSION */}
+                    {(activeToolId === "word-to-pdf" || activeToolId === "pdf-to-word") && (
+                      <WordWorkspace
+                        mode={activeToolId as any}
+                        activeFile={activeFile}
+                        user={user}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onOpenInEditor={(html, filename) => {
                           setActiveToolId("create-pdf");
                         }}
-                        className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors cursor-pointer shadow-md"
-                      >
-                        <Plus className="w-4 h-4 stroke-[2.5]" />
-                        <span>Create & Edit PDF</span>
-                      </button>
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
+                      />
+                    )}
 
-                      <button
-                        onClick={() => handleSelectTool("import-pdf")}
-                        className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700/80 text-zinc-200 font-medium text-xs px-4 py-2.5 rounded-lg border border-zinc-700/60 transition-colors cursor-pointer"
-                      >
-                        <FileText className="w-4 h-4 text-[#1DB954]" />
-                        <span>Import PDF File</span>
-                      </button>
-                    </div>
-                  </div>
+                    {/* TOOL 9: SECURITY & SEARCH */}
+                    {(activeToolId === "protect" || activeToolId === "search-pdf") && (
+                      <SecuritySearchWorkspace
+                        mode={activeToolId as any}
+                        activeFile={activeFile}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                      />
+                    )}
 
-                  {/* Right Graphic Badge */}
-                  <div className="bg-zinc-900/80 border border-zinc-800 p-4 rounded-xl flex flex-col items-center gap-1.5 text-center shrink-0">
-                    <div className="w-10 h-10 rounded-lg bg-zinc-800 text-[#1DB954] border border-zinc-700/50 flex items-center justify-center font-bold">
-                      <Zap className="w-5 h-5" />
-                    </div>
-                    <span className="text-xs font-semibold text-zinc-200">100% Client Engine</span>
-                    <span className="text-[11px] text-zinc-400 font-normal">Zero Server Data Retention</span>
-                  </div>
-                </div>
-
-                {/* Popular Tool Grid Section */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-base font-bold text-zinc-100 tracking-tight">
-                      {selectedCategory === "all" ? "All PDF Tools" : `Category: ${selectedCategory.toUpperCase()}`}
-                    </h3>
-                    <span className="text-xs text-zinc-400 font-normal">
-                      {filteredTools.length} tools available
-                    </span>
-                  </div>
-
-                  <ToolGrid
-                    tools={filteredTools}
-                    onSelectTool={handleSelectTool}
-                    activeFileName={activeFile?.name}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* VIEW 2: ACTIVE WORKSPACE TOOL STAGE */}
-            {activeToolId && (
-              <div className="flex flex-col gap-6">
-                {/* TOOL 1: MERGE */}
-                {activeToolId === "merge" && (
-                  <MergeWorkspace
-                    files={files}
-                    onAddFilesClick={() => fileInputRef.current?.click()}
-                    onRemoveFile={handleRemoveFile}
-                    onReorderFiles={(newOrder) => setFiles(newOrder)}
-                    onRunMerge={handleRunMerge}
-                    isProcessing={isProcessing}
-                  />
-                )}
-
-                {/* TOOL 2: ORGANIZE & ROTATE & EXTRACT & SPLIT */}
-                {(activeToolId === "organize" ||
-                  activeToolId === "rotate" ||
-                  activeToolId === "extract" ||
-                  activeToolId === "split") &&
-                  activeFile && (
-                    <OrganizeWorkspace
-                      activeFile={activeFile}
-                      onExport={handleRunOrganize}
-                      isProcessing={isProcessing}
-                    />
-                  )}
-
-                {/* TOOL 3: WATERMARK & REMOVE WATERMARK */}
-                {activeToolId === "watermark" && activeFile && (
-                  <WatermarkWorkspace
-                    activeFile={activeFile}
-                    onApplyWatermark={handleRunWatermark}
-                    isProcessing={isProcessing}
-                  />
-                )}
-
-                {activeToolId === "remove-watermark" && (
-                  <RemoveWatermarkWorkspace
-                    activeFile={activeFile}
-                    isProcessingGlobal={isProcessing}
-                    onUploadFile={handleFileUpload}
-                    onProcessedOutput={(bytes, filename) => {
-                      setDownloadBytes(bytes);
-                      setDownloadFileName(filename);
-                    }}
-                  />
-                )}
-
-                {/* TOOL 4: CREATE & EDIT PDF */}
-                {(activeToolId === "create-pdf" ||
-                  activeToolId === "edit-pdf" ||
-                  activeToolId === "import-pdf" ||
-                  activeToolId === "add-text" ||
-                  activeToolId === "insert-image") && (
-                  <CreateEditWorkspace
-                    activeFile={activeFile}
-                    onUploadClick={() => handleSelectTool("merge")}
-                    onOpenFilePicker={() => fileInputRef.current?.click()}
-                    onSelectTool={handleSelectTool}
-                  />
-                )}
-
-                {/* TOOL 5: CONVERT */}
-                {(activeToolId === "pdf-to-docx" ||
-                  activeToolId === "pdf-to-png" ||
-                  activeToolId === "pdf-to-jpg" ||
-                  activeToolId === "img-to-pdf" ||
-                  activeToolId === "img-to-svg" ||
-                  activeToolId === "pdf-to-markdown" ||
-                  activeToolId === "pdf-to-pdfa" ||
-                  activeToolId === "html-to-pdf") && (
-                  <ConvertWorkspace
-                    mode={activeToolId as any}
-                    activeFile={activeFile}
-                    onImagesToPdfRun={handleRunImagesToPdf}
-                    isProcessing={isProcessing}
-                  />
-                )}
-
-                {/* TOOL 6: ANNOTATE & UTILITIES */}
-                {(activeToolId === "annotate" ||
-                  activeToolId === "drawing" ||
-                  activeToolId === "sign" ||
-                  activeToolId === "redact" ||
-                  activeToolId === "page-numbers" ||
-                  activeToolId === "lock") &&
-                  activeFile && (
-                    <AnnotateWorkspace
-                      mode={activeToolId as any}
-                      activeFile={activeFile}
-                      onPageNumbersRun={handleRunPageNumbers}
-                      onLockRun={handleRunLock}
-                      onCompressRun={handleRunCompress}
-                      isProcessing={isProcessing}
-                    />
-                  )}
-
-                {/* TOOL 7: COMPRESS & REPAIR */}
-                {(activeToolId === "compress" || activeToolId === "repair") && (
-                  <CompressWorkspace
-                    activeFile={activeFile}
-                    onOpenFilePicker={() => fileInputRef.current?.click()}
-                  />
-                )}
-
-                {/* TOOL 8: WORD CONVERSION */}
-                {(activeToolId === "word-to-pdf" || activeToolId === "pdf-to-word") && (
-                  <WordWorkspace
-                    mode={activeToolId as any}
-                    activeFile={activeFile}
-                    onOpenFilePicker={() => fileInputRef.current?.click()}
-                    onOpenInEditor={(html, filename) => {
-                      setActiveToolId("create-pdf");
-                    }}
-                    onSaveToCloud={handleSaveToMyDocuments}
-                  />
-                )}
-
-                {/* TOOL 9: SECURITY & SEARCH */}
-                {(activeToolId === "protect" || activeToolId === "search-pdf") && (
-                  <SecuritySearchWorkspace
-                    mode={activeToolId as any}
-                    activeFile={activeFile}
-                    onOpenFilePicker={() => fileInputRef.current?.click()}
-                  />
-                )}
-
-                {/* Fallback if no file is selected for single-file tools */}
-                {!activeFile &&
-                  activeToolId !== "merge" &&
-                  activeToolId !== "img-to-pdf" &&
-                  activeToolId !== "img-to-svg" &&
-                  activeToolId !== "remove-watermark" &&
-                  activeToolId !== "create-pdf" &&
-                  activeToolId !== "edit-pdf" &&
-                  activeToolId !== "compress" &&
-                  activeToolId !== "repair" &&
-                  activeToolId !== "word-to-pdf" &&
-                  activeToolId !== "pdf-to-word" &&
-                  activeToolId !== "html-to-pdf" &&
-                  activeToolId !== "protect" &&
-                  activeToolId !== "search-pdf" &&
-                  activeToolId !== "import-pdf" &&
-                  activeToolId !== "add-text" &&
-                  activeToolId !== "insert-image" &&
-                  activeToolId !== "annotate" && (
-                  <div className="text-center py-16 bg-[#18181b] rounded-xl border border-zinc-800 my-6 flex flex-col items-center justify-center gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
-                      <FileText className="w-6 h-6 text-zinc-500" />
-                    </div>
-                    <h3 className="text-base font-bold text-zinc-100">No Document Selected</h3>
-                    <p className="text-xs text-zinc-400 max-w-sm font-normal">
-                      Select or upload a PDF document from your file list to use {activeToolObj?.title || "this tool"}.
-                    </p>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="mt-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-5 py-2.5 rounded-lg transition-colors cursor-pointer"
-                    >
-                      + Upload Document
-                    </button>
+                    {/* Fallback if no file is selected for single-file tools */}
+                    {!activeFile &&
+                      activeToolId !== "merge" &&
+                      activeToolId !== "img-to-pdf" &&
+                      activeToolId !== "img-to-svg" &&
+                      activeToolId !== "remove-watermark" &&
+                      activeToolId !== "create-pdf" &&
+                      activeToolId !== "edit-pdf" &&
+                      activeToolId !== "compress" &&
+                      activeToolId !== "repair" &&
+                      activeToolId !== "word-to-pdf" &&
+                      activeToolId !== "pdf-to-word" &&
+                      activeToolId !== "html-to-pdf" &&
+                      activeToolId !== "protect" &&
+                      activeToolId !== "search-pdf" &&
+                      activeToolId !== "import-pdf" &&
+                      activeToolId !== "add-text" &&
+                      activeToolId !== "insert-image" &&
+                      activeToolId !== "annotate" && (
+                        <div className="text-center py-16 bg-[#18181b] rounded-xl border border-zinc-800 my-6 flex flex-col items-center justify-center gap-3">
+                          <div className="w-12 h-12 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+                            <FileText className="w-6 h-6 text-zinc-500" />
+                          </div>
+                          <h3 className="text-base font-bold text-zinc-100">No Document Selected</h3>
+                          <p className="text-xs text-zinc-400 max-w-sm font-normal">
+                            Select or upload a PDF document from your file list to use {activeToolObj?.title || "this tool"}.
+                          </p>
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="mt-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-5 py-2.5 rounded-lg transition-colors cursor-pointer"
+                          >
+                            + Upload Document
+                          </button>
+                        </div>
+                      )}
                   </div>
                 )}
-              </div>
-            )}
-            </>
+              </>
             )}
           </main>
         </div>
       </div>
 
+      {/* Spotify Bottom Bar */}
+      <SpotifyPlayerBar
+        activeFile={activeFile}
+        activeToolTitle={activeToolObj?.title || (activeToolId ? "Tool" : null)}
+        activeToolId={activeToolId}
+        onProcessAction={handlePlayerBarAction}
+        isProcessing={isProcessing}
+        downloadBytes={downloadBytes}
+        downloadFileName={downloadFileName}
+        onDownloadClick={handleDownloadAndRecord}
+        onReset={() => {
+          setDownloadBytes(null);
+          setActiveToolId(null);
+          setIsSavedToGoogleDrive(false);
+        }}
+        onSaveToCloud={
+          downloadBytes
+            ? () => handleSaveToMyDocuments(downloadBytes, downloadFileName, activeToolObj?.title || "export")
+            : undefined
+        }
+        isSavedToCloud={isSavedToCloud}
+        onSaveToGoogleDrive={
+          downloadBytes
+            ? () => handleSaveToGoogleDrive(downloadBytes, downloadFileName)
+            : undefined
+        }
+        isSavedToGoogleDrive={isSavedToGoogleDrive}
+        isSavingToGoogleDrive={isSavingToGoogleDrive}
+      />
+
+      {/* Google Drive Import Modal */}
+      <GoogleDrivePickerModal
+        isOpen={isDrivePickerOpen}
+        onClose={() => setIsDrivePickerOpen(false)}
+        onImportFile={(file) => handleFileUpload([file])}
+        user={user}
+        onOpenAuthModal={(mode) => {
+          setAuthModalMode(mode || "login");
+          setIsAuthModalOpen(true);
+        }}
+      />
 
       {/* Authentication Modal */}
       <AuthModal
@@ -738,21 +1076,6 @@ export default function App() {
           <span>{cloudNotification}</span>
         </div>
       )}
-      {/* Hidden Global File Input for PDFs and Images */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={(e) => {
-          if (e.target.files && e.target.files.length > 0) {
-            handleFileUpload(e.target.files);
-          }
-          e.target.value = "";
-        }}
-        accept="application/pdf,.pdf,image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp,image/*"
-        multiple
-        className="hidden"
-      />
     </div>
   );
 }
-
