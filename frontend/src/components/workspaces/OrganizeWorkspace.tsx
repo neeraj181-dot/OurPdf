@@ -42,13 +42,17 @@ export const OrganizeWorkspace: React.FC<OrganizeWorkspaceProps> = ({
   const [selectedPagesForExtract, setSelectedPagesForExtract] = useState<number[]>([]);
 
   useEffect(() => {
-    if (activeFile && activeFile.pageThumbnails) {
-      const initial: PageOrderInfo[] = activeFile.pageThumbnails.map((url, idx) => ({
-        id: `page-${idx}-${Date.now()}`,
-        originalIndex: idx,
-        rotation: 0,
-        thumbnailUrl: url,
-      }));
+    if (activeFile) {
+      const totalCount = activeFile.pagesCount || activeFile.pageThumbnails?.length || 1;
+      const initial: PageOrderInfo[] = [];
+      for (let idx = 0; idx < totalCount; idx++) {
+        initial.push({
+          id: `page-${idx}-${Date.now()}`,
+          originalIndex: idx,
+          rotation: 0,
+          thumbnailUrl: activeFile.pageThumbnails?.[idx] || "",
+        });
+      }
       setPages(initial);
       setSelectedPagesForExtract([]);
       setSplitResults([]);

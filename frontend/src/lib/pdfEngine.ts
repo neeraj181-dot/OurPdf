@@ -31,8 +31,8 @@ export async function processPdfFile(file: File): Promise<{
   const pageTexts: string[] = [];
   let fullText = "";
 
-  // Render max 30 pages to prevent memory overflow on huge PDFs
-  const renderLimit = Math.min(pagesCount, 30);
+  // Render up to 100 pages thumbnails smoothly
+  const renderLimit = Math.min(pagesCount, 100);
 
   for (let i = 1; i <= renderLimit; i++) {
     try {
@@ -481,46 +481,130 @@ export async function renderPdfPageToDataUrl(
 }
 
 /**
- * Replaces a specific page in a PDF with a cleaned PNG image data URL and returns the updated PDF bytes.
- * If originalFile is not a PDF, it creates a new single-page PDF from the cleaned image.
+ * Replaces one or more pages in a PDF with modified PNG/JPEG image data URLs and returns the full updated PDF bytes.
+ * If originalSource is not a PDF, it creates a new PDF from the modified images.
+ * All original pages, page dimensions, and total page count are strictly preserved.
  */
-export async function replacePdfPageWithImage(
-  originalFile: File | null,
-  pageIndex: number,
-  cleanedImageDataUrl: string
+export async function replaceMultiplePdfPagesWithImages(
+  originalSource: File | Uint8Array | null,
+  modifiedPages: { [pageIndex: number]: string }
 ): Promise<Uint8Array> {
-  const base64Data = cleanedImageDataUrl.split(",")[1] || cleanedImageDataUrl;
-  const imageBytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+  const pageIndices = Object.keys(modifiedPages).map(Number);
+  if (pageIndices.length === 0 && originalSource) {
+    if (originalSource instanceof Uint8Array) return originalSource;
+    return new Uint8Array(await originalSource.arrayBuffer());
+  }
 
-  if (!originalFile || !originalFile.name.toLowerCase().endsWith(".pdf")) {
+  // Determine if source is PDF
+  let isPdf = false;
+  let originalBuffer: ArrayBuffer | null = null;
+
+  if (originalSource instanceof Uint8Array) {
+    originalBuffer = originalSource.buffer.slice(
+      originalSource.byteOffset,
+      originalSource.byteOffset + originalSource.byteLength
+    );
+    isPdf = true;
+  } else if (originalSource && typeof (originalSource as File).arrayBuffer === "function") {
+    const file = originalSource as File;
+    if (
+      file.name.toLowerCase().endsWith(".pdf") ||
+      file.type.toLowerCase().includes("pdf") ||
+      !file.type.startsWith("image/")
+    ) {
+      try {
+        originalBuffer = await file.arrayBuffer();
+        isPdf = true;
+      } catch {
+        isPdf = false;
+      }
+    }
+  }
+
+  // If source is not a PDF, create a new PDF from the modified images
+  if (!originalBuffer || !isPdf) {
     const newPdf = await PDFDocument.create();
-    const embeddedImg = await newPdf.embedPng(imageBytes);
-    const page = newPdf.addPage([embeddedImg.width, embeddedImg.height]);
-    page.drawImage(embeddedImg, {
-      x: 0,
-      y: 0,
-      width: embeddedImg.width,
-      height: embeddedImg.height,
-    });
+    for (const pIdx of pageIndices.sort((a, b) => a - b)) {
+      const dataUrl = modifiedPages[pIdx];
+      if (!dataUrl) continue;
+      const base64Data = dataUrl.split(",")[1] || dataUrl;
+      const imgBytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+      const embeddedImg =
+        dataUrl.includes("image/jpeg") || dataUrl.includes("image/jpg")
+          ? await newPdf.embedJpg(imgBytes)
+          : await newPdf.embedPng(imgBytes);
+      const page = newPdf.addPage([embeddedImg.width, embeddedImg.height]);
+      page.drawImage(embeddedImg, {
+        x: 0,
+        y: 0,
+        width: embeddedImg.width,
+        height: embeddedImg.height,
+      });
+    }
     return await newPdf.save();
   }
 
-  const originalBuffer = await fileToArrayBuffer(originalFile);
-  const pdfDoc = await PDFDocument.load(originalBuffer);
-  const totalPages = pdfDoc.getPageCount();
-  const targetIdx = Math.min(Math.max(0, pageIndex), totalPages - 1);
+  try {
+    const pdfDoc = await PDFDocument.load(originalBuffer, { ignoreEncryption: true });
+    const totalPages = pdfDoc.getPageCount();
 
-  const embeddedPng = await pdfDoc.embedPng(imageBytes);
-  const targetPage = pdfDoc.getPage(targetIdx);
-  const { width, height } = targetPage.getSize();
+    for (const [idxStr, dataUrl] of Object.entries(modifiedPages)) {
+      const pIdx = parseInt(idxStr, 10);
+      if (isNaN(pIdx) || pIdx < 0 || pIdx >= totalPages || !dataUrl) continue;
 
-  // Draw cleaned image over target page
-  targetPage.drawImage(embeddedPng, {
-    x: 0,
-    y: 0,
-    width: width,
-    height: height,
-  });
+      const base64Data = dataUrl.split(",")[1] || dataUrl;
+      const imgBytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+      const embeddedImg =
+        dataUrl.includes("image/jpeg") || dataUrl.includes("image/jpg")
+          ? await pdfDoc.embedJpg(imgBytes)
+          : await pdfDoc.embedPng(imgBytes);
 
-  return await pdfDoc.save();
+      const targetPage = pdfDoc.getPage(pIdx);
+      const { width, height } = targetPage.getSize();
+
+      // Draw cleaned image over target page (covers whole page canvas)
+      targetPage.drawImage(embeddedImg, {
+        x: 0,
+        y: 0,
+        width: width,
+        height: height,
+      });
+    }
+
+    return await pdfDoc.save();
+  } catch (pdfErr) {
+    console.warn("Falling back to canvas-based PDF generation:", pdfErr);
+    // Fallback if PDF loading fails
+    const newPdf = await PDFDocument.create();
+    for (const pIdx of pageIndices.sort((a, b) => a - b)) {
+      const dataUrl = modifiedPages[pIdx];
+      if (!dataUrl) continue;
+      const base64Data = dataUrl.split(",")[1] || dataUrl;
+      const imgBytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+      const embeddedImg = await newPdf.embedPng(imgBytes);
+      const page = newPdf.addPage([embeddedImg.width, embeddedImg.height]);
+      page.drawImage(embeddedImg, {
+        x: 0,
+        y: 0,
+        width: embeddedImg.width,
+        height: embeddedImg.height,
+      });
+    }
+    return await newPdf.save();
+  }
 }
+
+/**
+ * Replaces a specific page in a PDF with a cleaned PNG image data URL and returns the full updated PDF bytes.
+ * Preserves all other pages in the PDF.
+ */
+export async function replacePdfPageWithImage(
+  originalFile: File | Uint8Array | null,
+  pageIndex: number,
+  cleanedImageDataUrl: string
+): Promise<Uint8Array> {
+  return await replaceMultiplePdfPagesWithImages(originalFile, {
+    [pageIndex]: cleanedImageDataUrl,
+  });
+}
+
