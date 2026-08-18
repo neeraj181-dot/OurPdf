@@ -4,6 +4,8 @@ import {
   Search,
   CheckCircle2,
   AlertCircle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
@@ -30,6 +32,7 @@ export const SecuritySearchWorkspace: React.FC<SecuritySearchWorkspaceProps> = (
   // Password State
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -165,30 +168,45 @@ export const SecuritySearchWorkspace: React.FC<SecuritySearchWorkspaceProps> = (
           {mode === "protect" && (
             <div className="flex flex-col gap-4 max-w-md mx-auto w-full">
               <div className="flex flex-col gap-1 text-xs">
-                <label className="font-bold text-zinc-300">Set Document Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter strong password..."
-                  className="bg-zinc-900 text-white p-3 rounded-lg border border-zinc-800 focus:border-[#1DB954] focus:outline-none"
-                />
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-zinc-300">Set Document Password</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-zinc-400 hover:text-[#1DB954] flex items-center gap-1 text-[11px] cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showPassword ? "Hide" : "Show"}</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleProtectPdf()}
+                    placeholder="Type password from PC keyboard..."
+                    className="w-full bg-zinc-900 text-white p-3 rounded-lg border border-zinc-800 focus:border-[#1DB954] focus:outline-none"
+                    autoFocus
+                  />
+                </div>
               </div>
 
               <div className="flex flex-col gap-1 text-xs">
                 <label className="font-bold text-zinc-300">Confirm Password</label>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password..."
-                  className="bg-zinc-900 text-white p-3 rounded-lg border border-zinc-800 focus:border-[#1DB954] focus:outline-none"
+                  onKeyDown={(e) => e.key === "Enter" && handleProtectPdf()}
+                  placeholder="Re-type password..."
+                  className="w-full bg-zinc-900 text-white p-3 rounded-lg border border-zinc-800 focus:border-[#1DB954] focus:outline-none"
                 />
               </div>
 
               <button
                 onClick={handleProtectPdf}
-                disabled={isProcessing}
+                disabled={isProcessing || !password || password !== confirmPassword}
                 className="mt-2 w-full flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs py-3.5 rounded-full transition-all cursor-pointer shadow-lg disabled:opacity-50"
               >
                 <Lock className="w-4 h-4" />
