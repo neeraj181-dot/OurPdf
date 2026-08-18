@@ -3,6 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { WatermarkOptions, PageNumberOptions } from "../types";
 import { apiProtectPdf } from "./api";
+import { encryptPdfBytesClient } from "./pdfEncryptor";
 
 // Configure worker for pdfjs-dist using Vite bundled worker URL
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -15,16 +16,28 @@ export async function fileToArrayBuffer(file: File): Promise<ArrayBuffer> {
 }
 
 /**
- * Encrypts and password-protects a PDF document with standard AES-256 encryption.
+ * Encrypts and password-protects a PDF document with standard encryption.
  * When downloaded and opened in Adobe Acrobat, Edge, Chrome, or Preview, the PDF reader will prompt for the password.
+ * Supports both high-speed backend AES-256 and pure offline client-side encryption.
  */
 export async function protectPDF(
   file: File,
   password: string,
   ownerPassword?: string
 ): Promise<Uint8Array> {
-  return await apiProtectPdf(file, password, ownerPassword);
+  try {
+    return await apiProtectPdf(file, password, ownerPassword);
+  } catch (backendErr) {
+    console.warn("Backend protect endpoint offline, falling back to pure client-side PDF encryptor:", backendErr);
+  }
+
+  // 100% Offline client-side encryption fallback
+  const buffer = await fileToArrayBuffer(file);
+  const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+  const rawBytes = await pdfDoc.save({ useObjectStreams: false });
+  return await encryptPdfBytesClient(rawBytes, password, ownerPassword);
 }
+
 
 
 /**
