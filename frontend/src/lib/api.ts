@@ -265,3 +265,59 @@ export async function apiInpaintImage(
   });
 }
 
+// 6. PDF SECURITY & ENCRYPTION API
+export async function apiProtectPdf(
+  file: File,
+  password: string,
+  ownerPassword?: string
+): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("password", password);
+  if (ownerPassword) {
+    formData.append("owner_password", ownerPassword);
+  }
+
+  const res = await fetch(`${API_BASE_URL}/document/protect`, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to protect PDF." }));
+    throw new Error(err.detail || "Failed to encrypt PDF with password.");
+  }
+
+  const buffer = await res.arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+export async function apiUnlockPdf(
+  file: File,
+  password: string
+): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("password", password);
+
+  const res = await fetch(`${API_BASE_URL}/document/unlock`, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to unlock PDF." }));
+    throw new Error(err.detail || "Failed to unlock PDF.");
+  }
+
+  const buffer = await res.arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+

@@ -2,6 +2,7 @@ import { PDFDocument, rgb, degrees, StandardFonts } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { WatermarkOptions, PageNumberOptions } from "../types";
+import { apiProtectPdf } from "./api";
 
 // Configure worker for pdfjs-dist using Vite bundled worker URL
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -12,6 +13,19 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 export async function fileToArrayBuffer(file: File): Promise<ArrayBuffer> {
   return await file.arrayBuffer();
 }
+
+/**
+ * Encrypts and password-protects a PDF document with standard AES-256 encryption.
+ * When downloaded and opened in Adobe Acrobat, Edge, Chrome, or Preview, the PDF reader will prompt for the password.
+ */
+export async function protectPDF(
+  file: File,
+  password: string,
+  ownerPassword?: string
+): Promise<Uint8Array> {
+  return await apiProtectPdf(file, password, ownerPassword);
+}
+
 
 /**
  * Renders page thumbnails and extracts text from a PDF file using pdfjs-dist

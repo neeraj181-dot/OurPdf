@@ -8,7 +8,7 @@ import {
 import { PDFDocument } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
 import { PDFFileItem } from "../../types";
-import { downloadPdfBytes, fileToArrayBuffer } from "../../lib/pdfEngine";
+import { downloadPdfBytes, fileToArrayBuffer, protectPDF } from "../../lib/pdfEngine";
 import { soundEffects } from "../../lib/audio";
 
 interface SecuritySearchWorkspaceProps {
@@ -54,17 +54,15 @@ export const SecuritySearchWorkspace: React.FC<SecuritySearchWorkspaceProps> = (
     soundEffects.playClick();
     setIsProcessing(true);
     setErrorMsg(null);
+    setSuccessMsg(null);
 
     try {
-      const buffer = await fileToArrayBuffer(activeFile.file);
-      const pdfDoc = await PDFDocument.load(buffer);
-
-      // Save PDF with encrypted standard permission
-      const protectedBytes = await pdfDoc.save();
+      const protectedBytes = await protectPDF(activeFile.file, password);
       soundEffects.playSuccess();
-      setSuccessMsg(`PDF protected successfully with password.`);
+      setSuccessMsg(`PDF protected successfully! Any user opening it will be prompted for the password.`);
       downloadPdfBytes(protectedBytes, `protected_${activeFile.name}`);
     } catch (err: any) {
+      console.error("Protect PDF error:", err);
       setErrorMsg(err.message || "Failed to protect PDF.");
     } finally {
       setIsProcessing(false);

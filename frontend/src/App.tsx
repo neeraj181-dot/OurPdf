@@ -14,6 +14,7 @@ import {
   addPageNumbers,
   imagesToPDF,
   downloadPdfBytes,
+  protectPDF,
 } from "./lib/pdfEngine";
 import { PDF_TOOLS } from "./data/toolsData";
 import { soundEffects } from "./lib/audio";
@@ -290,13 +291,13 @@ export default function App() {
     if (!activeFile || !pwd) return;
     setIsProcessing(true);
     try {
-      // Return file bytes with encrypted filename indicator
-      const buffer = await activeFile.file.arrayBuffer();
-      setDownloadBytes(new Uint8Array(buffer));
-      setDownloadFileName(`Protected_${activeFile.name}`);
+      const output = await protectPDF(activeFile.file, pwd);
+      setDownloadBytes(output);
+      setDownloadFileName(`protected_${activeFile.name}`);
       soundEffects.playSuccess();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Failed to protect PDF: ${e?.message || "Operation failed"}`);
     } finally {
       setIsProcessing(false);
     }

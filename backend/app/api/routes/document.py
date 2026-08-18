@@ -138,3 +138,130 @@ async def inpaint_image(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Inpainting failed: {str(e)}",
         )
+
+
+@router.post("/protect")
+async def protect_pdf(
+    file: UploadFile = File(...),
+    password: str = Form(...),
+    owner_password: Optional[str] = Form(None),
+):
+    """
+    Encrypt and password-protect a PDF document using AES-256 standard encryption.
+    When opened in any PDF reader, it will strictly prompt for the password.
+    """
+    import io
+    from fastapi import Response
+
+    user_pw = (password or "").strip()
+    if not user_pw:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password is required to protect PDF.",
+        )
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PDF file is empty.",
+        )
+
+    owner_pw = (owner_password or "").strip() or user_pw
+
+    # 1. Try PyMuPDF AES-256 encryption
+    try:
+        import fitz
+
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        protected_bytes = doc.tobytes(
+            encryption=fitz.PDF_ENCRYPT_AES_256,
+            user_pw=user_pw,
+            owner_pw=owner_pw,
+            permissions=fitz.PDF_PERM_ACCESSIBILITY | fitz.PDF_PERM_PRINT | fitz.PDF_PERM_COPY,
+        )
+        doc.close()
+        return Response(
+            content=protected_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="protected_{file.filename or "document.pdf"}"'},
+        )
+    except Exception as fitz_err:
+        # 2. Fallback to pypdf AES-256 encryption
+        try:
+            from pypdf import PdfReader, PdfWriter
+
+            reader = PdfReader(io.BytesIO(file_bytes))
+            writer = PdfWriter()
+            for page in reader.pages:
+                writer.add_page(page)
+
+            if reader.metadata:
+                writer.add_metadata(reader.metadata)
+
+            writer.encrypt(
+                user_password=user_pw,
+                owner_password=owner_pw,
+                algorithm="AES-256",
+            )
+
+            out_buf = io.BytesIO()
+            writer.write(out_buf)
+            protected_bytes = out_buf.getvalue()
+
+            return Response(
+                content=protected_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="protected_{file.filename or "document.pdf"}"'},
+            )
+        except Exception as pypdf_err:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to encrypt PDF: {str(pypdf_err)}",
+            )
+
+
+@router.post("/unlock")
+async def unlock_pdf(
+    file: UploadFile = File(...),
+    password: str = Form(...),
+):
+    """
+    Unlock / decrypt a password-protected PDF document.
+    """
+    from fastapi import Response
+
+    user_pw = (password or "").strip()
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PDF file is empty.",
+        )
+
+    try:
+        import fitz
+
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        if doc.is_encrypted:
+            success = doc.authenticate(user_pw)
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Incorrect password. Please verify the password.",
+                )
+        unlocked_bytes = doc.tobytes()
+        doc.close()
+        return Response(
+            content=unlocked_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="unlocked_{file.filename or "document.pdf"}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to unlock PDF: {str(e)}",
+        )
+
