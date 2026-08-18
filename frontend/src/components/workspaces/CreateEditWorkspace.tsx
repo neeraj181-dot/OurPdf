@@ -257,11 +257,50 @@ export const CreateEditWorkspace: React.FC<CreateEditWorkspaceProps> = ({
     execCmd("insertHTML", tableHtml);
   };
 
-  // Merge Additional PDF File
+  // Merge Additional PDF File (Appends pages to current document)
   const handleMergeAdditionalPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
-    await loadImportedPdf(file);
+    try {
+      soundEffects.playClick();
+      const buffer = await fileToArrayBuffer(file);
+      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
+      const pdfDoc = await loadingTask.promise;
+      const numPages = pdfDoc.numPages;
+
+      const additionalPages: DocumentPage[] = [];
+
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const viewport = page.getViewport({ scale: 1.5 });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        let bgDataUrl = null;
+        if (ctx) {
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          await page.render({ canvasContext: ctx, viewport } as any).promise;
+          bgDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        }
+
+        additionalPages.push({
+          id: `imp-${Date.now()}-${pages.length + i}`,
+          pageNumber: pages.length + i,
+          contentHtml: `<p style="color: #6b7280; font-size: 13px; italic;">Annotate or add content over imported page ${pages.length + i}...</p>`,
+          bgImage: bgDataUrl,
+          importedFile: file,
+          importedPageIndex: i - 1,
+          rotation: 0,
+        });
+      }
+
+      setPages((prev) => [...prev, ...additionalPages]);
+      soundEffects.playSuccess();
+    } catch (err) {
+      console.error("Failed to append PDF pages:", err);
+      alert("Failed to append PDF pages.");
+    }
     e.target.value = "";
   };
 
@@ -786,6 +825,7 @@ export const CreateEditWorkspace: React.FC<CreateEditWorkspaceProps> = ({
         <div className="lg:col-span-8 flex flex-col items-center justify-center py-4 bg-[#09090b] rounded-2xl border border-zinc-900/80 shadow-2xl min-h-[750px] relative overflow-y-auto">
           {/* Centered A4 / Letter Document Page */}
           <div
+            key={`page-container-${currentPage.id}`}
             ref={(el) => {
               editorRefs.current[`page-${activePageIndex}`] = el;
             }}
@@ -810,6 +850,7 @@ export const CreateEditWorkspace: React.FC<CreateEditWorkspaceProps> = ({
 
             {/* Continuous Rich Text Editable Surface */}
             <div
+              key={`editable-${currentPage.id}`}
               contentEditable
               suppressContentEditableWarning
               dangerouslySetInnerHTML={{ __html: currentPage.contentHtml }}

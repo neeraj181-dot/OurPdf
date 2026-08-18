@@ -21,6 +21,7 @@ import {
   imagesToPDF,
   renderPdfPageToDataUrl,
   replacePdfPageWithImage,
+  replaceMultiplePdfPagesWithImages,
 } from "../../lib/pdfEngine";
 import { apiInpaintImage } from "../../lib/api";
 
@@ -52,6 +53,9 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
   const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
   const [isLoadingPage, setIsLoadingPage] = useState<boolean>(false);
 
+  // Multi-page edits tracking: stores pageIndex (0-based) -> cleanedImageDataUrl
+  const [modifiedPages, setModifiedPages] = useState<{ [pageIndex: number]: string }>({});
+
   // State: Spot & Box Tool Modes
   const [toolMode, setToolMode] = useState<"spot" | "box">("spot");
   const [spotRadius, setSpotRadius] = useState<number>(30);
@@ -66,6 +70,17 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
   const [cleanedImageSrc, setCleanedImageSrc] = useState<string | null>(null);
   const [cleanedPdfBytes, setCleanedPdfBytes] = useState<Uint8Array | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Reset modified pages when activeFile ID changes
+  const prevFileIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeFile && activeFile.id !== prevFileIdRef.current) {
+      prevFileIdRef.current = activeFile.id;
+      setModifiedPages({});
+      setCleanedPdfBytes(null);
+      setSelectedPageIndex(0);
+    }
+  }, [activeFile]);
 
   // Canvas Refs
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -82,22 +97,31 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
       if (!activeFile) {
         setSourceImageSrc(null);
         setCleanedImageSrc(null);
-        setCleanedPdfBytes(null);
         setSpots([]);
         return;
       }
 
       setIsLoadingPage(true);
       setErrorMessage(null);
-      setCleanedImageSrc(null);
-      setCleanedPdfBytes(null);
       setSpots([]);
 
       const targetIndex = Math.min(Math.max(0, selectedPageIndex), Math.max(0, activeFile.pagesCount - 1));
       setSourceFileName(activeFile.name.replace(/\.pdf$/i, ""));
 
+      // If this page was already modified/cleaned, restore the cleaned preview
+      if (modifiedPages[targetIndex]) {
+        if (!isCancelled) {
+          setSourceImageSrc(modifiedPages[targetIndex]);
+          setCleanedImageSrc(modifiedPages[targetIndex]);
+          setIsLoadingPage(false);
+        }
+        return;
+      }
+
+      setCleanedImageSrc(null);
+
       try {
-        if (activeFile.file && activeFile.name.toLowerCase().endsWith(".pdf")) {
+        if (activeFile.file && (activeFile.name.toLowerCase().endsWith(".pdf") || activeFile.file.type.includes("pdf"))) {
           const result = await renderPdfPageToDataUrl(activeFile.file, targetIndex, 1.6);
           if (!isCancelled) {
             setSourceImageSrc(result.dataUrl);
@@ -128,7 +152,7 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
     return () => {
       isCancelled = true;
     };
-  }, [activeFile, selectedPageIndex]);
+  }, [activeFile, selectedPageIndex, modifiedPages]);
 
   // Draw loaded source image on imageCanvas & initialize mask/overlay canvases
   useEffect(() => {
@@ -395,57 +419,179 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
         const pixels = imgData.data;
         const maskPixels = maskData.data;
 
+        // 1. Identify all masked pixels (dilated slightly by 2px for smooth anti-aliasing)
+        const isRawMasked = new Uint8Array(w * h);
+        let minX = w, maxX = 0, minY = h, maxY = 0;
+        let totalMasked = 0;
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            if (maskPixels[idx * 4 + 3] > 15 && (maskPixels[idx * 4] > 15 || maskPixels[idx * 4 + 1] > 15 || maskPixels[idx * 4 + 2] > 15)) {
+              isRawMasked[idx] = 1;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+              totalMasked++;
+            }
+          }
+        }
+
+        if (totalMasked === 0) {
+          setIsProcessing(false);
+          return;
+        }
+
+        // Dilate mask by 2-3px so edges don't leave faint ghost borders
         const isMasked = new Uint8Array(w * h);
-        for (let i = 0; i < w * h; i++) {
-          if (maskPixels[i * 4 + 3] > 20) isMasked[i] = 1;
+        const dilateR = 2;
+        for (let y = Math.max(0, minY - dilateR); y <= Math.min(h - 1, maxY + dilateR); y++) {
+          for (let x = Math.max(0, minX - dilateR); x <= Math.min(w - 1, maxX + dilateR); x++) {
+            let found = false;
+            for (let dy = -dilateR; dy <= dilateR && !found; dy++) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) continue;
+              for (let dx = -dilateR; dx <= dilateR; dx++) {
+                const nx = x + dx;
+                if (nx < 0 || nx >= w) continue;
+                if (isRawMasked[ny * w + nx]) {
+                  found = true;
+                  break;
+                }
+              }
+            }
+            if (found) isMasked[y * w + x] = 1;
+          }
+        }
+
+        // 2. Extract clean unmasked border pixels (1-6px band around mask)
+        const borderPixels: { x: number; y: number; r: number; g: number; b: number; lum: number }[] = [];
+        const bandMin = Math.max(0, minY - 8);
+        const bandMax = Math.min(h - 1, maxY + 8);
+        const bandMinX = Math.max(0, minX - 8);
+        const bandMaxX = Math.min(w - 1, maxX + 8);
+
+        for (let y = bandMin; y <= bandMax; y++) {
+          for (let x = bandMinX; x <= bandMaxX; x++) {
+            const idx = y * w + x;
+            if (isMasked[idx]) continue;
+
+            // Check if adjacent to mask
+            let isAdjacent = false;
+            for (let dy = -3; dy <= 3 && !isAdjacent; dy++) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) continue;
+              for (let dx = -3; dx <= 3; dx++) {
+                const nx = x + dx;
+                if (nx < 0 || nx >= w) continue;
+                if (isMasked[ny * w + nx]) {
+                  isAdjacent = true;
+                  break;
+                }
+              }
+            }
+
+            if (isAdjacent) {
+              const pIdx = idx * 4;
+              const r = pixels[pIdx];
+              const g = pixels[pIdx + 1];
+              const b = pixels[pIdx + 2];
+              const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+              borderPixels.push({ x, y, r, g, b, lum });
+            }
+          }
+        }
+
+        // Calculate median background color and filter out dark text strokes at the edge
+        let cleanBorder = borderPixels;
+        if (borderPixels.length > 10) {
+          const sortedLums = [...borderPixels].map((p) => p.lum).sort((a, b) => a - b);
+          const medianLum = sortedLums[Math.floor(sortedLums.length * 0.75)]; // Bias towards lighter paper/background
+          // Exclude border pixels that are very dark (e.g. text edges)
+          const filtered = borderPixels.filter((p) => Math.abs(p.lum - medianLum) < 40 || p.lum >= medianLum - 20);
+          if (filtered.length > 5) {
+            cleanBorder = filtered;
+          }
         }
 
         const outputData = imgCtx.createImageData(w, h);
         outputData.data.set(pixels);
         const outPixels = outputData.data;
 
-        for (let pass = 0; pass < 5; pass++) {
-          const radius = 6 + pass * 4;
-          for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-              const idx = y * w + x;
-              if (!isMasked[idx]) continue;
+        // Compute median fallback color
+        let medR = 255, medG = 255, medB = 255;
+        if (cleanBorder.length > 0) {
+          const sum = cleanBorder.reduce((acc, p) => ({ r: acc.r + p.r, g: acc.g + p.g, b: acc.b + p.b }), { r: 0, g: 0, b: 0 });
+          medR = Math.round(sum.r / cleanBorder.length);
+          medG = Math.round(sum.g / cleanBorder.length);
+          medB = Math.round(sum.b / cleanBorder.length);
+        }
 
-              let totalWeight = 0;
-              let sumR = 0;
-              let sumG = 0;
-              let sumB = 0;
+        // 3. Multi-Ray Directional Boundary Interpolation (Zero Blurring / Crisp Document Restoration)
+        const rayAngles: { cos: number; sin: number }[] = [];
+        const numRays = 16;
+        for (let i = 0; i < numRays; i++) {
+          const theta = (i * 2 * Math.PI) / numRays;
+          rayAngles.push({ cos: Math.cos(theta), sin: Math.sin(theta) });
+        }
 
-              for (let dy = -radius; dy <= radius; dy++) {
-                const ny = y + dy;
-                if (ny < 0 || ny >= h) continue;
-                for (let dx = -radius; dx <= radius; dx++) {
-                  const nx = x + dx;
-                  if (nx < 0 || nx >= w) continue;
-                  const nIdx = ny * w + nx;
+        for (let y = Math.max(0, minY - dilateR); y <= Math.min(h - 1, maxY + dilateR); y++) {
+          for (let x = Math.max(0, minX - dilateR); x <= Math.min(w - 1, maxX + dilateR); x++) {
+            const idx = y * w + x;
+            if (!isMasked[idx]) continue;
 
-                  if (!isMasked[nIdx] || pass > 0) {
-                    const distSq = dx * dx + dy * dy;
-                    if (distSq === 0 || distSq > radius * radius) continue;
-                    const weight = 1 / (distSq + 1);
-                    const pIdx = nIdx * 4;
-                    sumR += pixels[pIdx] * weight;
-                    sumG += pixels[pIdx + 1] * weight;
-                    sumB += pixels[pIdx + 2] * weight;
-                    totalWeight += weight;
+            let totalWeight = 0;
+            let sumR = 0, sumG = 0, sumB = 0;
+
+            // Cast 16 rays to find nearest clean border in all directions
+            for (let r = 0; r < numRays; r++) {
+              const { cos, sin } = rayAngles[r];
+              let foundBorder = false;
+
+              for (let step = 1; step <= 250; step++) {
+                const rx = Math.round(x + cos * step);
+                const ry = Math.round(y + sin * step);
+
+                if (rx < 0 || rx >= w || ry < 0 || ry >= h) break;
+
+                const rIdx = ry * w + rx;
+                if (!isMasked[rIdx]) {
+                  const pIdx = rIdx * 4;
+                  const pr = pixels[pIdx];
+                  const pg = pixels[pIdx + 1];
+                  const pb = pixels[pIdx + 2];
+                  const plum = 0.299 * pr + 0.587 * pg + 0.114 * pb;
+
+                  // Skip dark letter strokes if paper is bright
+                  if (cleanBorder.length > 10 && (plum < (medR * 0.299 + medG * 0.587 + medB * 0.114) - 45)) {
+                    continue;
                   }
+
+                  const dist = Math.sqrt((rx - x) * (rx - x) + (ry - y) * (ry - y));
+                  const weight = 1.0 / (dist * dist + 0.05);
+
+                  sumR += pr * weight;
+                  sumG += pg * weight;
+                  sumB += pb * weight;
+                  totalWeight += weight;
+                  foundBorder = true;
+                  break;
                 }
               }
+            }
 
-              if (totalWeight > 0) {
-                const targetIdx = idx * 4;
-                outPixels[targetIdx] = Math.round(sumR / totalWeight);
-                outPixels[targetIdx + 1] = Math.round(sumG / totalWeight);
-                outPixels[targetIdx + 2] = Math.round(sumB / totalWeight);
-              }
+            const targetIdx = idx * 4;
+            if (totalWeight > 0) {
+              outPixels[targetIdx] = Math.round(sumR / totalWeight);
+              outPixels[targetIdx + 1] = Math.round(sumG / totalWeight);
+              outPixels[targetIdx + 2] = Math.round(sumB / totalWeight);
+            } else {
+              outPixels[targetIdx] = medR;
+              outPixels[targetIdx + 1] = medG;
+              outPixels[targetIdx + 2] = medB;
             }
           }
-          pixels.set(outPixels);
         }
 
         const resCanvas = document.createElement("canvas");
@@ -460,12 +606,13 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
 
       if (resultUrl) {
         setCleanedImageSrc(resultUrl);
+        const nextModifiedPages = { ...modifiedPages, [selectedPageIndex]: resultUrl };
+        setModifiedPages(nextModifiedPages);
 
         try {
-          const pdfBytes = await replacePdfPageWithImage(
+          const pdfBytes = await replaceMultiplePdfPagesWithImages(
             activeFile?.file || null,
-            selectedPageIndex,
-            resultUrl
+            nextModifiedPages
           );
           setCleanedPdfBytes(pdfBytes);
           if (onProcessedOutput) {
@@ -491,18 +638,24 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
     soundEffects.playClick();
     const a = document.createElement("a");
     a.href = cleanedImageSrc;
-    a.download = `${sourceFileName}_cleaned.png`;
+    a.download = `${sourceFileName}_page_${selectedPageIndex + 1}_cleaned.png`;
     a.click();
   };
 
-  // Export Output PDF
+  // Export Output PDF (Preserves all pages of the multi-page PDF)
   const handleExportAsPdf = async () => {
-    if (!cleanedImageSrc) return;
+    if (!cleanedImageSrc && Object.keys(modifiedPages).length === 0) return;
     soundEffects.playClick();
     try {
-      if (cleanedPdfBytes) {
+      if (activeFile && activeFile.file) {
+        const pdfBytes = await replaceMultiplePdfPagesWithImages(
+          activeFile.file,
+          modifiedPages
+        );
+        downloadPdfBytes(pdfBytes, `${sourceFileName}_cleaned.pdf`);
+      } else if (cleanedPdfBytes) {
         downloadPdfBytes(cleanedPdfBytes, `${sourceFileName}_cleaned.pdf`);
-      } else {
+      } else if (cleanedImageSrc) {
         const res = await fetch(cleanedImageSrc);
         const blob = await res.blob();
         const file = new File([blob], `${sourceFileName}_cleaned.png`, { type: "image/png" });
@@ -557,8 +710,11 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <span className="font-semibold text-zinc-300 text-xs px-1">
-                {selectedPageIndex + 1} / {totalPages}
+              <span className="font-semibold text-zinc-300 text-xs px-1 flex items-center gap-1">
+                <span>{selectedPageIndex + 1} / {totalPages}</span>
+                {modifiedPages[selectedPageIndex] && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#1DB954] inline-block" title="Page edited" />
+                )}
               </span>
               <button
                 onClick={() => setSelectedPageIndex((prev) => Math.min(totalPages - 1, prev + 1))}
@@ -780,7 +936,7 @@ export const RemoveWatermarkWorkspace: React.FC<RemoveWatermarkWorkspaceProps> =
                 className="flex-1 flex items-center justify-center gap-1.5 bg-[#1DB954] hover:bg-[#1ed760] text-black font-bold text-xs py-2.5 rounded-lg transition-colors cursor-pointer shadow-md"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Save as PDF</span>
+                <span>Save as PDF {totalPages > 1 ? `(${totalPages} Pages)` : ""}</span>
               </button>
             </div>
           )}
