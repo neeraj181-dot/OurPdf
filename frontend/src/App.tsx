@@ -28,7 +28,6 @@ import {
 
 import { SpotifySidebar } from "./components/SpotifySidebar";
 import { SpotifyHeader } from "./components/SpotifyHeader";
-import { SpotifyPlayerBar } from "./components/SpotifyPlayerBar";
 import { ToolGrid } from "./components/ToolGrid";
 
 import { MergeWorkspace } from "./components/workspaces/MergeWorkspace";
@@ -36,11 +35,15 @@ import { OrganizeWorkspace } from "./components/workspaces/OrganizeWorkspace";
 import { WatermarkWorkspace } from "./components/workspaces/WatermarkWorkspace";
 import { AiDocumentWorkspace } from "./components/workspaces/AiDocumentWorkspace";
 import { ConvertWorkspace } from "./components/workspaces/ConvertWorkspace";
-import { AnnotateWorkspace } from "./components/workspaces/AnnotateWorkspace";
 import { RemoveWatermarkWorkspace } from "./components/workspaces/RemoveWatermarkWorkspace";
 import { CreateEditWorkspace } from "./components/workspaces/CreateEditWorkspace";
 import { CompressWorkspace } from "./components/workspaces/CompressWorkspace";
 import { WordWorkspace } from "./components/workspaces/WordWorkspace";
+import { HtmlWorkspace } from "./components/workspaces/HtmlWorkspace";
+import { MarkdownWorkspace } from "./components/workspaces/MarkdownWorkspace";
+import { SignWorkspace } from "./components/workspaces/SignWorkspace";
+import { CropWorkspace } from "./components/workspaces/CropWorkspace";
+import { PageNumbersWorkspace } from "./components/workspaces/PageNumbersWorkspace";
 import { MyDocumentsWorkspace } from "./components/workspaces/MyDocumentsWorkspace";
 import { ProfileWorkspace } from "./components/workspaces/ProfileWorkspace";
 import { SecuritySearchWorkspace } from "./components/workspaces/SecuritySearchWorkspace";
@@ -852,13 +855,20 @@ export default function App() {
                         onAddFilesClick={() => fileInputRef.current?.click()}
                         onRemoveFile={handleRemoveFile}
                         onReorderFiles={(newOrder) => setFiles(newOrder)}
-                        onRunMerge={handleRunMerge}
-                        isProcessing={isProcessing}
+                        user={user}
+                        onSaveToCloud={(bytes, name) =>
+                          handleSaveToMyDocuments(bytes, name, "Merge PDF")
+                        }
+                        onSaveToGoogleDrive={(bytes, name) =>
+                          handleSaveToGoogleDrive(bytes, name)
+                        }
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
                       />
                     )}
 
                     {/* TOOL 2: ORGANIZE & ROTATE & EXTRACT & SPLIT */}
                     {(activeToolId === "organize" ||
+                      activeToolId === "organize-pdf" ||
                       activeToolId === "rotate" ||
                       activeToolId === "extract" ||
                       activeToolId === "split") &&
@@ -867,6 +877,14 @@ export default function App() {
                           activeFile={activeFile}
                           onExport={handleRunOrganize}
                           isProcessing={isProcessing}
+                          user={user}
+                          onSaveToCloud={(bytes, name) =>
+                            handleSaveToMyDocuments(bytes, name, "Organize PDF")
+                          }
+                          onSaveToGoogleDrive={(bytes, name) =>
+                            handleSaveToGoogleDrive(bytes, name)
+                          }
+                          onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
                         />
                       )}
 
@@ -893,27 +911,27 @@ export default function App() {
 
                     {/* TOOL 4: CREATE & EDIT PDF */}
                     {(activeToolId === "create-pdf" ||
-                      activeToolId === "edit-pdf" ||
                       activeToolId === "import-pdf" ||
-                      activeToolId === "add-text" ||
                       activeToolId === "insert-image") && (
                       <CreateEditWorkspace
                         activeFile={activeFile}
-                        onUploadClick={() => handleSelectTool("merge")}
+                        onUploadClick={() => fileInputRef.current?.click()}
                         onOpenFilePicker={() => fileInputRef.current?.click()}
                         onSelectTool={handleSelectTool}
+                        user={user}
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
                       />
                     )}
 
-                    {/* TOOL 5: CONVERT */}
+                    {/* TOOL 5: CONVERT (EXCEL, PPTX, IMAGES, SVG) */}
                     {(activeToolId === "pdf-to-docx" ||
                       activeToolId === "pdf-to-png" ||
                       activeToolId === "pdf-to-jpg" ||
                       activeToolId === "img-to-pdf" ||
                       activeToolId === "img-to-svg" ||
-                      activeToolId === "pdf-to-markdown" ||
-                      activeToolId === "pdf-to-pdfa" ||
-                      activeToolId === "html-to-pdf") && (
+                      activeToolId === "pdf-to-excel" ||
+                      activeToolId === "pdf-to-powerpoint") && (
                       <ConvertWorkspace
                         mode={activeToolId as any}
                         activeFile={activeFile}
@@ -922,33 +940,74 @@ export default function App() {
                       />
                     )}
 
-                    {/* TOOL 6: ANNOTATE & UTILITIES */}
-                    {(activeToolId === "annotate" ||
-                      activeToolId === "drawing" ||
-                      activeToolId === "sign" ||
-                      activeToolId === "redact" ||
-                      activeToolId === "page-numbers" ||
-                      activeToolId === "lock") &&
-                      activeFile && (
-                        <AnnotateWorkspace
-                          mode={activeToolId as any}
-                          activeFile={activeFile}
-                          onPageNumbersRun={handleRunPageNumbers}
-                          onLockRun={handleRunLock}
-                          onCompressRun={handleRunCompress}
-                          isProcessing={isProcessing}
-                        />
-                      )}
-
-                    {/* TOOL 7: COMPRESS & REPAIR */}
-                    {(activeToolId === "compress" || activeToolId === "repair") && (
-                      <CompressWorkspace
+                    {/* TOOL 5B: HTML TO PDF */}
+                    {activeToolId === "html-to-pdf" && (
+                      <HtmlWorkspace
                         activeFile={activeFile}
+                        user={user}
                         onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
                       />
                     )}
 
-                    {/* TOOL 8: WORD CONVERSION */}
+                    {/* TOOL 5C: PDF TO MARKDOWN */}
+                    {activeToolId === "pdf-to-markdown" && (
+                      <MarkdownWorkspace
+                        activeFile={activeFile}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onFileUpload={handleFileUpload}
+                        user={user}
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
+                      />
+                    )}
+
+                    {/* TOOL 6: SIGN PDF */}
+                    {(activeToolId === "sign" || activeToolId === "sign-pdf") && (
+                      <SignWorkspace
+                        activeFile={activeFile}
+                        user={user}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
+                      />
+                    )}
+
+                    {/* TOOL 7: CROP PDF */}
+                    {activeToolId === "crop-pdf" && (
+                      <CropWorkspace
+                        activeFile={activeFile}
+                        user={user}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
+                      />
+                    )}
+
+                    {/* TOOL 8: PAGE NUMBERS */}
+                    {activeToolId === "page-numbers" && (
+                      <PageNumbersWorkspace
+                        activeFile={activeFile}
+                        user={user}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
+                      />
+                    )}
+
+                    {/* TOOL 9: COMPRESS PDF */}
+                    {(activeToolId === "compress" || activeToolId === "compress-pdf") && (
+                      <CompressWorkspace
+                        activeFile={activeFile}
+                        user={user}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
+                      />
+                    )}
+
+                    {/* TOOL 10: WORD CONVERSION */}
                     {(activeToolId === "word-to-pdf" || activeToolId === "pdf-to-word") && (
                       <WordWorkspace
                         mode={activeToolId as any}
@@ -963,7 +1022,7 @@ export default function App() {
                       />
                     )}
 
-                    {/* TOOL 9: SECURITY & SEARCH */}
+                    {/* TOOL 11: SECURITY & SEARCH */}
                     {(activeToolId === "protect" || activeToolId === "search-pdf") && (
                       <SecuritySearchWorkspace
                         mode={activeToolId as any}
@@ -979,18 +1038,22 @@ export default function App() {
                       activeToolId !== "img-to-svg" &&
                       activeToolId !== "remove-watermark" &&
                       activeToolId !== "create-pdf" &&
-                      activeToolId !== "edit-pdf" &&
                       activeToolId !== "compress" &&
-                      activeToolId !== "repair" &&
+                      activeToolId !== "compress-pdf" &&
                       activeToolId !== "word-to-pdf" &&
                       activeToolId !== "pdf-to-word" &&
                       activeToolId !== "html-to-pdf" &&
+                      activeToolId !== "pdf-to-markdown" &&
+                      activeToolId !== "sign" &&
+                      activeToolId !== "sign-pdf" &&
+                      activeToolId !== "pdf-to-excel" &&
+                      activeToolId !== "pdf-to-powerpoint" &&
+                      activeToolId !== "crop-pdf" &&
+                      activeToolId !== "page-numbers" &&
                       activeToolId !== "protect" &&
                       activeToolId !== "search-pdf" &&
                       activeToolId !== "import-pdf" &&
-                      activeToolId !== "add-text" &&
-                      activeToolId !== "insert-image" &&
-                      activeToolId !== "annotate" && (
+                      activeToolId !== "insert-image" && (
                         <div className="text-center py-16 bg-[#18181b] rounded-xl border border-zinc-800 my-6 flex flex-col items-center justify-center gap-3">
                           <div className="w-12 h-12 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
                             <FileText className="w-6 h-6 text-zinc-500" />
@@ -1014,36 +1077,6 @@ export default function App() {
           </main>
         </div>
       </div>
-
-      {/* Spotify Bottom Bar */}
-      <SpotifyPlayerBar
-        activeFile={activeFile}
-        activeToolTitle={activeToolObj?.title || (activeToolId ? "Tool" : null)}
-        activeToolId={activeToolId}
-        onProcessAction={handlePlayerBarAction}
-        isProcessing={isProcessing}
-        downloadBytes={downloadBytes}
-        downloadFileName={downloadFileName}
-        onDownloadClick={handleDownloadAndRecord}
-        onReset={() => {
-          setDownloadBytes(null);
-          setActiveToolId(null);
-          setIsSavedToGoogleDrive(false);
-        }}
-        onSaveToCloud={
-          downloadBytes
-            ? () => handleSaveToMyDocuments(downloadBytes, downloadFileName, activeToolObj?.title || "export")
-            : undefined
-        }
-        isSavedToCloud={isSavedToCloud}
-        onSaveToGoogleDrive={
-          downloadBytes
-            ? () => handleSaveToGoogleDrive(downloadBytes, downloadFileName)
-            : undefined
-        }
-        isSavedToGoogleDrive={isSavedToGoogleDrive}
-        isSavingToGoogleDrive={isSavingToGoogleDrive}
-      />
 
       {/* Google Drive Import Modal */}
       <GoogleDrivePickerModal

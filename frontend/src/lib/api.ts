@@ -2,7 +2,7 @@
  * Frontend API Service Layer for Authentication, Documents, and History
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5000/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
 
 export interface UserProfile {
   id: number;
@@ -315,6 +315,57 @@ export async function apiConvertWordToPdf(file: File): Promise<Uint8Array> {
   return await convertWordToPdfClient(file);
 }
 
+export interface HtmlToPdfOptions {
+  file?: File | null;
+  html?: string;
+  filename?: string;
+  pageSize?: "A4" | "Letter" | "Legal" | string;
+  orientation?: "portrait" | "landscape";
+  margin?: "default" | "small" | "none";
+  printBackground?: boolean;
+}
+
+export async function apiConvertHtmlToPdf(options: HtmlToPdfOptions): Promise<Uint8Array> {
+  const formData = new FormData();
+  if (options.file) {
+    formData.append("file", options.file, options.file.name);
+  }
+  if (options.html) {
+    formData.append("html_content", options.html);
+  }
+  if (options.filename) {
+    formData.append("filename", options.filename);
+  }
+  if (options.pageSize) {
+    formData.append("page_size", options.pageSize);
+  }
+  if (options.orientation) {
+    formData.append("orientation", options.orientation);
+  }
+  if (options.margin) {
+    formData.append("margin", options.margin);
+  }
+  if (options.printBackground !== undefined) {
+    formData.append("print_background", options.printBackground ? "true" : "false");
+  }
+
+  const res = await fetch(`${API_BASE_URL}/convert/html-to-pdf`, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "HTML to PDF conversion failed." }));
+    throw new Error(err.detail || "HTML to PDF conversion failed.");
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
 // 5. INPAINTING & WATERMARK REMOVAL API
 export async function apiInpaintImage(
   imageSrc: string,
@@ -350,6 +401,33 @@ export async function apiInpaintImage(
     reader.onload = (e) => resolve(e.target?.result as string);
     reader.readAsDataURL(blob);
   });
+}
+
+export async function apiConvertPdfToMarkdown(file: File): Promise<{
+  markdown: string;
+  pageCount: number;
+  isScanned: boolean;
+  headings: number;
+  tables: number;
+  words: number;
+}> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+
+  const res = await fetch(`${API_BASE_URL}/tools/pdf-to-markdown`, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Server markdown conversion failed." }));
+    throw new Error(err.detail || "Server conversion failed");
+  }
+
+  return res.json();
 }
 
 // 6. DOWNLOADS API
@@ -528,4 +606,323 @@ export async function apiDisconnectGoogleDrive(): Promise<void> {
     throw new Error(err.detail || "Failed to disconnect Google Drive");
   }
 }
+
+// =============================================================
+// 8. SUITE OF 9 CORE PDF TOOLS API
+// =============================================================
+
+// 1. Compress PDF
+export async function apiCompressPdf(
+  file: File,
+  level: "low" | "medium" | "high" = "medium"
+): Promise<{ bytes: Uint8Array; originalSize: number; compressedSize: number; savedPercent: number }> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("level", level);
+
+  const res = await fetch(`${API_BASE_URL}/tools/compress-pdf`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Compression failed" }));
+    throw new Error(err.detail || "Compression failed");
+  }
+
+  const originalSize = Number(res.headers.get("X-Original-Size") || file.size);
+  const compressedSize = Number(res.headers.get("X-Compressed-Size") || 0);
+  const savedPercent = Number(res.headers.get("X-Saved-Percent") || 0);
+
+  const arrayBuffer = await res.arrayBuffer();
+  return {
+    bytes: new Uint8Array(arrayBuffer),
+    originalSize: originalSize || file.size,
+    compressedSize: compressedSize || arrayBuffer.byteLength,
+    savedPercent,
+  };
+}
+
+// 2. OCR PDF (Searchable Output)
+export async function apiOcrPdf(file: File, language: "eng" | "hin" | "mal" = "eng"): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("language", language);
+
+  const res = await fetch(`${API_BASE_URL}/tools/ocr-pdf`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "OCR processing failed" }));
+    throw new Error(err.detail || "OCR processing failed");
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+// 3. Sign PDF
+export async function apiSignPdf(file: File, signatures: any[]): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("signatures", JSON.stringify(signatures));
+
+  const res = await fetch(`${API_BASE_URL}/tools/sign-pdf`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Signing failed" }));
+    throw new Error(err.detail || "Signing failed");
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+// 4. Fill PDF
+export async function apiGetFormFields(file: File): Promise<{ fields: any[]; count: number }> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+
+  const res = await fetch(`${API_BASE_URL}/tools/form-fields`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    return { fields: [], count: 0 };
+  }
+
+  return res.json();
+}
+
+export async function apiFillPdf(file: File, formValues: any, customTexts: any[] = []): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("form_values", JSON.stringify(formValues));
+  formData.append("custom_texts", JSON.stringify(customTexts));
+
+  const res = await fetch(`${API_BASE_URL}/tools/fill-pdf`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Form filling failed" }));
+    throw new Error(err.detail || "Form filling failed");
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+// 5. PDF to Excel (.xlsx)
+export async function apiPdfToExcel(file: File): Promise<Blob> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+
+  const res = await fetch(`${API_BASE_URL}/tools/pdf-to-excel`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Excel conversion failed" }));
+    throw new Error(err.detail || "Excel conversion failed");
+  }
+
+  return res.blob();
+}
+
+// 6. PDF to PowerPoint (.pptx)
+export async function apiPdfToPowerpoint(file: File): Promise<Blob> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+
+  const res = await fetch(`${API_BASE_URL}/tools/pdf-to-powerpoint`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "PowerPoint conversion failed" }));
+    throw new Error(err.detail || "PowerPoint conversion failed");
+  }
+
+  return res.blob();
+}
+
+// 7. Crop PDF
+export async function apiCropPdf(file: File, cropConfig: any): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("crop_config", JSON.stringify(cropConfig));
+
+  const res = await fetch(`${API_BASE_URL}/tools/crop-pdf`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Crop failed" }));
+    throw new Error(err.detail || "Crop failed");
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+// 8. Page Numbers
+export async function apiAddPageNumbers(file: File, options: any): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("position", options.position || "bottom-center");
+  formData.append("format_type", options.format_type || "1");
+  formData.append("start_number", String(options.start_number || 1));
+  formData.append("font_size", String(options.font_size || 10));
+  formData.append("margin", String(options.margin || 30));
+  formData.append("color", options.color || "#4b5563");
+  formData.append("pages_scope", options.pages_scope || "all");
+  formData.append("start_page", String(options.start_page || 1));
+  if (options.end_page) {
+    formData.append("end_page", String(options.end_page));
+  }
+
+  const res = await fetch(`${API_BASE_URL}/tools/page-numbers`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Page numbers application failed" }));
+    throw new Error(err.detail || "Page numbers application failed");
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+// 9. Redact PDF
+export async function apiRedactPdf(file: File, redactions: any[], keywords: string[] = []): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("redactions", JSON.stringify(redactions));
+  formData.append("keywords", JSON.stringify(keywords));
+
+  const res = await fetch(`${API_BASE_URL}/tools/redact-pdf`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Redaction failed" }));
+    throw new Error(err.detail || "Redaction failed");
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+// 10. Title & Heading Organizer APIs
+export interface DetectedHeadingItem {
+  id: string;
+  originalText?: string;
+  text: string;
+  level: "Title" | "H1" | "H2" | "H3";
+  page: number;
+  position?: number;
+  fontSize?: number;
+  isBold?: boolean;
+  color?: string;
+  bbox?: number[];
+  isEdited?: boolean;
+}
+
+export interface DocumentPageInfo {
+  pageNumber: number;
+  width: number;
+  height: number;
+  headingCount?: number;
+}
+
+export interface DetectedStructureResponse {
+  title: string;
+  pageCount: number;
+  isScanned: boolean;
+  message?: string;
+  pages: DocumentPageInfo[];
+  headings: DetectedHeadingItem[];
+  textElements?: DetectedHeadingItem[];
+}
+
+export interface ExportOrganizedPdfOptions {
+  title?: string;
+  headings: DetectedHeadingItem[];
+  text_elements?: DetectedHeadingItem[];
+  header_text?: string;
+  footer_text?: string;
+  show_page_numbers?: boolean;
+  page_numbers_position?: string;
+  page_order?: number[];
+}
+
+export async function apiDetectPdfHeadings(file: File): Promise<DetectedStructureResponse> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+
+  const res = await fetch(`${API_BASE_URL}/tools/detect-headings`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to analyze PDF headings" }));
+    throw new Error(err.detail || "Failed to analyze PDF headings");
+  }
+
+  return await res.json();
+}
+
+export async function apiExportOrganizedPdf(file: File, options: ExportOrganizedPdfOptions): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  if (options.title) formData.append("title", options.title);
+  formData.append("headings", JSON.stringify(options.headings || []));
+  if (options.text_elements) formData.append("text_elements", JSON.stringify(options.text_elements));
+  if (options.header_text) formData.append("header_text", options.header_text);
+  if (options.footer_text) formData.append("footer_text", options.footer_text);
+  formData.append("show_page_numbers", String(options.show_page_numbers ?? true));
+  if (options.page_numbers_position) formData.append("page_numbers_position", options.page_numbers_position);
+  if (options.page_order) formData.append("page_order", JSON.stringify(options.page_order));
+
+  const res = await fetch(`${API_BASE_URL}/tools/export-organized-pdf`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to export organized PDF" }));
+    throw new Error(err.detail || "Failed to export organized PDF");
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
 

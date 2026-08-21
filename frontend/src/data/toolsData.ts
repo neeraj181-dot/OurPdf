@@ -12,15 +12,6 @@ export const PDF_TOOLS: PDFTool[] = [
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
   {
-    id: "edit-pdf",
-    title: "Edit PDF",
-    description: "Open and edit existing PDF documents directly in the Word-style rich text workspace.",
-    category: "create",
-    iconName: "Edit3",
-    badge: "NEW",
-    accentBg: "bg-zinc-800/80 border-zinc-700/50",
-  },
-  {
     id: "word-to-pdf",
     title: "Word → PDF",
     description: "Convert Word documents (.docx) into clean, high-quality PDF files.",
@@ -44,10 +35,20 @@ export const PDF_TOOLS: PDFTool[] = [
     description: "Render HTML code or rich formatted web documents directly into PDF format.",
     category: "create",
     iconName: "Code",
+    badge: "READY",
+    accentBg: "bg-zinc-800/80 border-zinc-700/50",
+  },
+  {
+    id: "sign-pdf",
+    title: "Sign PDF",
+    description: "Add your handwritten electronic signature to any PDF document across all pages.",
+    category: "edit",
+    iconName: "FileSignature",
+    badge: "POPULAR",
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
 
-  // 2. ORGANIZE
+  // 2. ORGANIZE & PAGES
   {
     id: "merge",
     title: "Merge PDF",
@@ -67,6 +68,14 @@ export const PDF_TOOLS: PDFTool[] = [
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
   {
+    id: "crop-pdf",
+    title: "Crop PDF",
+    description: "Crop PDF pages and remove unwanted margins or areas.",
+    category: "pages",
+    iconName: "Crop",
+    accentBg: "bg-zinc-800/80 border-zinc-700/50",
+  },
+  {
     id: "organize",
     title: "Organize PDF",
     description: "Visual page organizer. Reorder thumbnails, duplicate pages, or delete unwanted pages.",
@@ -82,22 +91,14 @@ export const PDF_TOOLS: PDFTool[] = [
     iconName: "RotateCw",
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
-  {
-    id: "extract-pages",
-    title: "Extract Pages",
-    description: "Select and extract specific pages from your PDF into a brand new document.",
-    category: "pages",
-    iconName: "FileCheck",
-    accentBg: "bg-zinc-800/80 border-zinc-700/50",
-  },
 
-  // 3. EDIT & ANNOTATE
+  // 3. EDIT & ENHANCE
   {
-    id: "add-text",
-    title: "Add Text & Headings",
-    description: "Insert paragraphs, headings, lists, and formatted text directly into your document.",
+    id: "page-numbers",
+    title: "Page Numbers",
+    description: "Add customizable page numbers to your PDF.",
     category: "edit",
-    iconName: "Type",
+    iconName: "Hash",
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
   {
@@ -106,22 +107,6 @@ export const PDF_TOOLS: PDFTool[] = [
     description: "Insert PNG, JPG, or WebP images and photos directly into the document editor.",
     category: "edit",
     iconName: "FileImage",
-    accentBg: "bg-zinc-800/80 border-zinc-700/50",
-  },
-  {
-    id: "annotate",
-    title: "Annotations",
-    description: "Add notes, comments, highlights, and markup stamps onto PDF pages.",
-    category: "edit",
-    iconName: "PenTool",
-    accentBg: "bg-zinc-800/80 border-zinc-700/50",
-  },
-  {
-    id: "drawing",
-    title: "Drawing",
-    description: "Freehand drawing, shapes, arrows, and brush annotations on PDF pages.",
-    category: "edit",
-    iconName: "Brush",
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
   {
@@ -141,51 +126,34 @@ export const PDF_TOOLS: PDFTool[] = [
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
   {
-    id: "sign",
-    title: "Sign PDF",
-    description: "Draw, type, or upload an electronic signature to sign PDF contracts and documents.",
-    category: "edit",
-    iconName: "FileSignature",
-    badge: "POPULAR",
-    accentBg: "bg-zinc-800/80 border-zinc-700/50",
-  },
-  {
-    id: "redact",
-    title: "Redact PDF",
-    description: "Permanently blackout sensitive text, financial data, and confidential areas in PDFs.",
-    category: "edit",
-    iconName: "ShieldAlert",
-    accentBg: "bg-zinc-800/80 border-zinc-700/50",
-  },
-
-  // 4. OPTIMIZE
-  {
-    id: "compress",
+    id: "compress-pdf",
     title: "Compress PDF",
-    description: "Reduce PDF file size efficiently with Low, Balanced, or High compression settings.",
+    description: "Reduce PDF file size while preserving document quality.",
     category: "enhance",
     iconName: "FileArchive",
     badge: "POPULAR",
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
-  {
-    id: "ocr",
-    title: "OCR & Format",
-    description: "Vision OCR text extraction on scanned PDFs and images using the FastAPI Python backend.",
-    category: "enhance",
-    iconName: "Sparkles",
-    accentBg: "bg-zinc-800/80 border-zinc-700/50",
-  },
-  {
-    id: "repair",
-    title: "Repair PDF",
-    description: "Rebuild and fix corrupted or unreadable PDF document structures.",
-    category: "enhance",
-    iconName: "Wrench",
-    accentBg: "bg-zinc-800/80 border-zinc-700/50",
-  },
 
-  // 5. CONVERT
+  // 4. CONVERT
+  {
+    id: "pdf-to-excel",
+    title: "PDF → Excel",
+    description: "Extract tables from PDF documents into editable Excel spreadsheets.",
+    category: "convert",
+    iconName: "TableProperties",
+    badge: "NEW",
+    accentBg: "bg-zinc-800/80 border-zinc-700/50",
+  },
+  {
+    id: "pdf-to-powerpoint",
+    title: "PDF → PowerPoint",
+    description: "Convert PDF pages into editable PowerPoint presentations.",
+    category: "convert",
+    iconName: "FileSpreadsheet",
+    badge: "NEW",
+    accentBg: "bg-zinc-800/80 border-zinc-700/50",
+  },
   {
     id: "pdf-to-word",
     title: "PDF → Word",
@@ -220,14 +188,6 @@ export const PDF_TOOLS: PDFTool[] = [
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
   {
-    id: "pdf-to-pdfa",
-    title: "PDF → PDF/A",
-    description: "Convert standard PDF files into ISO-compliant PDF/A format for long-term archiving.",
-    category: "convert",
-    iconName: "ShieldCheck",
-    accentBg: "bg-zinc-800/80 border-zinc-700/50",
-  },
-  {
     id: "img-to-svg",
     title: "PNG/JPG → SVG",
     description: "Convert PNG and JPG/JPEG raster images into clean SVG vector format.",
@@ -237,7 +197,7 @@ export const PDF_TOOLS: PDFTool[] = [
     accentBg: "bg-zinc-800/80 border-zinc-700/50",
   },
 
-  // 6. SECURITY & SEARCH
+  // 5. SECURITY & SEARCH
   {
     id: "protect",
     title: "Protect PDF",

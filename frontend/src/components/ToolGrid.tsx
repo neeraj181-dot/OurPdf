@@ -30,6 +30,9 @@ import {
   Sparkles,
   ShieldCheck,
   FileCheck,
+  Crop,
+  Presentation,
+  FileSpreadsheet,
 } from "lucide-react";
 import { PDFTool } from "../types";
 import { soundEffects } from "../lib/audio";
@@ -107,6 +110,12 @@ export const ToolGrid: React.FC<ToolGridProps> = ({
         return <ShieldCheck className={iconClass} />;
       case "FileCheck":
         return <FileCheck className={iconClass} />;
+      case "Crop":
+        return <Crop className={iconClass} />;
+      case "Presentation":
+        return <Presentation className={iconClass} />;
+      case "FileSpreadsheet":
+        return <FileSpreadsheet className={iconClass} />;
       default:
         return <FileText className={iconClass} />;
     }
