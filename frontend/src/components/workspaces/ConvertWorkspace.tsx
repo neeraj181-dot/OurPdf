@@ -11,16 +11,22 @@ import {
   FileText,
   ShieldCheck,
   Code,
+  TableProperties,
+  FileSpreadsheet,
+  Sparkles,
+  AlertCircle,
+  Presentation,
 } from "lucide-react";
 import { PDFFileItem } from "../../types";
 import { pdfToImages, downloadPdfBytes, fileToArrayBuffer } from "../../lib/pdfEngine";
 import { convertImageToSvg, downloadSvgString } from "../../lib/imageToSvg";
+import { apiPdfToExcel, apiPdfToPowerpoint } from "../../lib/api";
 import { soundEffects } from "../../lib/audio";
 import { PDFDocument } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
 
 interface ConvertWorkspaceProps {
-  mode: "pdf-to-img" | "pdf-to-png" | "pdf-to-jpg" | "img-to-pdf" | "img-to-svg" | "pdf-to-markdown" | "pdf-to-pdfa" | "html-to-pdf";
+  mode: "pdf-to-img" | "pdf-to-png" | "pdf-to-jpg" | "img-to-pdf" | "img-to-svg" | "pdf-to-excel" | "pdf-to-powerpoint";
   activeFile: PDFFileItem | null;
   onImagesToPdfRun: (files: File[]) => void;
   isProcessing: boolean;
@@ -45,14 +51,15 @@ export const ConvertWorkspace: React.FC<ConvertWorkspaceProps> = ({
   const [generatedSvg, setGeneratedSvg] = useState<string | null>(null);
   const [vectorColors, setVectorColors] = useState<number>(16);
 
-  // Markdown State
-  const [extractedMarkdown, setExtractedMarkdown] = useState<string | null>(null);
-  const [isConvertingMarkdown, setIsConvertingMarkdown] = useState(false);
+  // Excel State
+  const [isConvertingExcel, setIsConvertingExcel] = useState(false);
+  const [excelBlob, setExcelBlob] = useState<Blob | null>(null);
+  const [excelError, setExcelError] = useState<string | null>(null);
 
-  // HTML to PDF State
-  const [htmlInput, setHtmlInput] = useState<string>(
-    "<h1>Document Title</h1>\n<p>Enter or paste formatted HTML content here to convert to PDF.</p>"
-  );
+  // PowerPoint State
+  const [isConvertingPptx, setIsConvertingPptx] = useState(false);
+  const [pptxBlob, setPptxBlob] = useState<Blob | null>(null);
+  const [pptxError, setPptxError] = useState<string | null>(null);
 
   // 1. PDF TO PNG / JPG
   const handleRenderPdfToImages = async () => {
@@ -103,12 +110,6 @@ export const ConvertWorkspace: React.FC<ConvertWorkspaceProps> = ({
         return;
       }
 
-      if (file.size === 0) {
-        alert("Selected image file is empty.");
-        e.target.value = "";
-        return;
-      }
-
       setSvgImageFile(file);
       setGeneratedSvg(null);
       soundEffects.playClick();
@@ -140,63 +141,184 @@ export const ConvertWorkspace: React.FC<ConvertWorkspaceProps> = ({
     downloadSvgString(generatedSvg, `${svgImageFile.name.replace(/\.[^/.]+$/, "")}.svg`);
   };
 
-  // 4. PDF TO MARKDOWN
-  const handleConvertToMarkdown = async () => {
+  // 6. PDF TO EXCEL (.XLSX)
+  const handleRunPdfToExcel = async () => {
     if (!activeFile) return;
     soundEffects.playClick();
-    setIsConvertingMarkdown(true);
+    setIsConvertingExcel(true);
+    setExcelError(null);
+    setExcelBlob(null);
+
     try {
-      const buffer = await fileToArrayBuffer(activeFile.file);
-      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
-      const pdfDoc = await loadingTask.promise;
-      let md = `# ${activeFile.name.replace(/\.[^/.]+$/, "")}\n\n`;
-
-      for (let i = 1; i <= pdfDoc.numPages; i++) {
-        const page = await pdfDoc.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map((item: any) => item.str).join(" ");
-        md += `## Page ${i}\n\n${pageText}\n\n---\n\n`;
-      }
-
-      setExtractedMarkdown(md);
+      const blob = await apiPdfToExcel(activeFile.file);
+      setExcelBlob(blob);
       soundEffects.playSuccess();
-    } catch (err) {
-      alert("Failed to convert PDF to Markdown.");
+    } catch (err: any) {
+      console.error("Excel conversion error:", err);
+      setExcelError(err?.message || "Failed to extract tables into Excel spreadsheet.");
     } finally {
-      setIsConvertingMarkdown(false);
+      setIsConvertingExcel(false);
     }
   };
 
-  const handleDownloadMarkdown = () => {
-    if (!extractedMarkdown || !activeFile) return;
+  const handleDownloadExcel = () => {
+    if (!excelBlob || !activeFile) return;
     soundEffects.playSuccess();
-    const blob = new Blob([extractedMarkdown], { type: "text/markdown;charset=utf-8" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${activeFile.name.replace(/\.[^/.]+$/, "")}.md`;
+    a.href = URL.createObjectURL(excelBlob);
+    a.download = `${activeFile.name.replace(/\.[^/.]+$/, "")}.xlsx`;
     a.click();
   };
 
-  // 5. PDF TO PDF/A
-  const handleConvertToPdfA = async () => {
+  // 7. PDF TO POWERPOINT (.PPTX)
+  const handleRunPdfToPowerPoint = async () => {
     if (!activeFile) return;
     soundEffects.playClick();
+    setIsConvertingPptx(true);
+    setPptxError(null);
+    setPptxBlob(null);
+
     try {
-      const buffer = await fileToArrayBuffer(activeFile.file);
-      const pdfDoc = await PDFDocument.load(buffer);
-      pdfDoc.setTitle(activeFile.name.replace(/\.[^/.]+$/, ""));
-      pdfDoc.setProducer("OurPDF PDF/A Archival Engine");
-      pdfDoc.setCreator("OurPDF");
-      const pdfaBytes = await pdfDoc.save();
-      downloadPdfBytes(pdfaBytes, `pdfa_${activeFile.name}`);
+      const blob = await apiPdfToPowerpoint(activeFile.file);
+      setPptxBlob(blob);
       soundEffects.playSuccess();
-    } catch {
-      alert("Failed to convert to PDF/A.");
+    } catch (err: any) {
+      console.error("PowerPoint conversion error:", err);
+      setPptxError(err?.message || "Failed to convert PDF into PowerPoint slides.");
+    } finally {
+      setIsConvertingPptx(false);
     }
+  };
+
+  const handleDownloadPowerPoint = () => {
+    if (!pptxBlob || !activeFile) return;
+    soundEffects.playSuccess();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(pptxBlob);
+    a.download = `${activeFile.name.replace(/\.[^/.]+$/, "")}.pptx`;
+    a.click();
   };
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto p-4 font-sans text-white">
+      {/* MODE: PDF TO EXCEL */}
+      {mode === "pdf-to-excel" && (
+        <div className="flex flex-col gap-5">
+          <div className="bg-[#181818] p-6 rounded-2xl border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold text-[#1DB954] uppercase tracking-wider">
+                <TableProperties className="w-4 h-4" />
+                <span>PDF → EXCEL CONVERTER</span>
+                <span className="bg-[#1DB954]/20 text-[#1DB954] border border-[#1DB954]/40 px-2 py-0.5 rounded text-[10px] font-bold ml-1">
+                  NEW
+                </span>
+              </div>
+              <h2 className="text-xl font-bold mt-0.5">Extract Tables to Editable Excel (.xlsx)</h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Active Document: <span className="text-white font-semibold">{activeFile?.name || "None"}</span>
+              </p>
+            </div>
+
+            <button
+              onClick={handleRunPdfToExcel}
+              disabled={isConvertingExcel || !activeFile}
+              className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs px-6 py-3 rounded-full transition-all shadow-md disabled:opacity-50 cursor-pointer"
+            >
+              <TableProperties className={`w-4 h-4 ${isConvertingExcel ? "animate-spin" : ""}`} />
+              <span>{isConvertingExcel ? "EXTRACTING TABLES..." : "CONVERT TO EXCEL (.XLSX)"}</span>
+            </button>
+          </div>
+
+          {excelError && (
+            <div className="p-4 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-200 text-xs flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <span>{excelError}</span>
+            </div>
+          )}
+
+          {excelBlob && !excelError && (
+            <div className="bg-emerald-950/60 p-6 rounded-2xl border border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl animate-in fade-in">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="w-6 h-6 text-[#1DB954] shrink-0" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Excel Spreadsheet Generated!</h3>
+                  <p className="text-xs text-zinc-300 mt-0.5">
+                    Tables, numbers, and headers successfully structured into formatted .xlsx worksheets.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleDownloadExcel}
+                className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs px-6 py-2.5 rounded-lg transition-colors cursor-pointer shadow-md shrink-0"
+              >
+                <Download className="w-4 h-4 stroke-[2.5]" />
+                <span>Download .xlsx File</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MODE: PDF TO POWERPOINT */}
+      {mode === "pdf-to-powerpoint" && (
+        <div className="flex flex-col gap-5">
+          <div className="bg-[#181818] p-6 rounded-2xl border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold text-[#1DB954] uppercase tracking-wider">
+                <Presentation className="w-4 h-4" />
+                <span>PDF → POWERPOINT CONVERTER</span>
+                <span className="bg-[#1DB954]/20 text-[#1DB954] border border-[#1DB954]/40 px-2 py-0.5 rounded text-[10px] font-bold ml-1">
+                  NEW
+                </span>
+              </div>
+              <h2 className="text-xl font-bold mt-0.5">Convert PDF Pages to PowerPoint Presentation</h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Active Document: <span className="text-white font-semibold">{activeFile?.name || "None"}</span>
+              </p>
+            </div>
+
+            <button
+              onClick={handleRunPdfToPowerPoint}
+              disabled={isConvertingPptx || !activeFile}
+              className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs px-6 py-3 rounded-full transition-all shadow-md disabled:opacity-50 cursor-pointer"
+            >
+              <Presentation className={`w-4 h-4 ${isConvertingPptx ? "animate-spin" : ""}`} />
+              <span>{isConvertingPptx ? "GENERATING SLIDES..." : "CONVERT TO POWERPOINT (.PPTX)"}</span>
+            </button>
+          </div>
+
+          {pptxError && (
+            <div className="p-4 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-200 text-xs flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <span>{pptxError}</span>
+            </div>
+          )}
+
+          {pptxBlob && !pptxError && (
+            <div className="bg-emerald-950/60 p-6 rounded-2xl border border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl animate-in fade-in">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="w-6 h-6 text-[#1DB954] shrink-0" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">PowerPoint Presentation Ready!</h3>
+                  <p className="text-xs text-zinc-300 mt-0.5">
+                    {activeFile?.pagesCount || 1} slides compiled with high-fidelity layout preservation.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleDownloadPowerPoint}
+                className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs px-6 py-2.5 rounded-lg transition-colors cursor-pointer shadow-md shrink-0"
+              >
+                <Download className="w-4 h-4 stroke-[2.5]" />
+                <span>Download .pptx File</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* MODE: PDF TO PNG / JPG */}
       {(mode === "pdf-to-img" || mode === "pdf-to-png" || mode === "pdf-to-jpg") && (
         <div className="flex flex-col gap-5">
@@ -433,87 +555,6 @@ export const ConvertWorkspace: React.FC<ConvertWorkspaceProps> = ({
               )}
             </div>
           )}
-        </div>
-      )}
-
-      {/* MODE: PDF TO MARKDOWN */}
-      {mode === "pdf-to-markdown" && (
-        <div className="flex flex-col gap-5">
-          <div className="bg-[#181818] p-6 rounded-2xl border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-bold text-[#1DB954] uppercase tracking-wider">
-                <FileText className="w-4 h-4" />
-                <span>PDF TO MARKDOWN</span>
-              </div>
-              <h2 className="text-xl font-bold mt-0.5">Convert PDF to Clean Markdown (.md)</h2>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Active Document: <span className="text-white font-semibold">{activeFile?.name || "None"}</span>
-              </p>
-            </div>
-
-            <button
-              onClick={handleConvertToMarkdown}
-              disabled={isConvertingMarkdown || !activeFile}
-              className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs px-5 py-2.5 rounded-full transition-all shadow-md disabled:opacity-50 cursor-pointer"
-            >
-              <span>{isConvertingMarkdown ? "Extracting Markdown..." : "Generate Markdown"}</span>
-            </button>
-          </div>
-
-          {extractedMarkdown && (
-            <div className="bg-[#181818] p-6 rounded-2xl border border-zinc-800 flex flex-col gap-4 shadow-xl">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#1DB954]">Markdown Preview</span>
-                <button
-                  onClick={handleDownloadMarkdown}
-                  className="flex items-center gap-2 bg-white hover:bg-zinc-100 text-black font-bold text-xs px-4 py-2 rounded-lg cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download .md</span>
-                </button>
-              </div>
-              <pre className="bg-zinc-950 p-4 rounded-xl text-xs font-mono text-zinc-300 max-h-96 overflow-y-auto whitespace-pre-wrap">
-                {extractedMarkdown}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* MODE: PDF TO PDF/A */}
-      {mode === "pdf-to-pdfa" && (
-        <div className="bg-[#181818] p-6 rounded-2xl border border-zinc-800 flex flex-col items-center text-center gap-4 shadow-xl max-w-xl mx-auto">
-          <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[#1DB954]">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <h2 className="text-xl font-bold text-white">Convert to PDF/A Standard</h2>
-          <p className="text-xs text-zinc-400 max-w-md">
-            Convert standard PDF files into ISO-compliant PDF/A format with standardized metadata for long-term document preservation and legal compliance.
-          </p>
-          <button
-            onClick={handleConvertToPdfA}
-            disabled={!activeFile}
-            className="mt-2 flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs px-6 py-3 rounded-full transition-all shadow-md disabled:opacity-50 cursor-pointer"
-          >
-            <span>CONVERT & DOWNLOAD PDF/A</span>
-          </button>
-        </div>
-      )}
-
-      {/* MODE: HTML TO PDF */}
-      {mode === "html-to-pdf" && (
-        <div className="bg-[#181818] p-6 rounded-2xl border border-zinc-800 flex flex-col gap-4 shadow-xl">
-          <div className="flex items-center gap-2 text-xs font-bold text-[#1DB954]">
-            <Code className="w-4 h-4" />
-            <span>HTML TO PDF CONVERTER</span>
-          </div>
-          <p className="text-xs text-zinc-400">Enter or paste HTML markup below:</p>
-          <textarea
-            value={htmlInput}
-            onChange={(e) => setHtmlInput(e.target.value)}
-            rows={8}
-            className="w-full bg-zinc-950 text-zinc-200 font-mono text-xs p-4 rounded-xl border border-zinc-800 focus:outline-none focus:border-[#1DB954]"
-          />
         </div>
       )}
     </div>

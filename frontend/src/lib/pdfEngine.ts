@@ -332,15 +332,27 @@ export async function pdfToImages(file: File): Promise<string[]> {
 }
 
 /**
- * Helper to download raw PDF bytes in browser strictly as file download without opening browser PDF viewer tab
+ * Helper to download raw PDF bytes in browser as valid standard PDF
  */
 export function downloadPdfBytes(bytes: Uint8Array, filename: string) {
-  // Use octet-stream MIME type so browser triggers download save-as dialog rather than opening built-in PDF viewer tab
-  const blob = new Blob([bytes], { type: "application/octet-stream" });
+  if (!bytes || bytes.byteLength === 0) {
+    alert("Cannot download empty file.");
+    return;
+  }
+
+  // Validate PDF header %PDF-
+  const headerStr = String.fromCharCode(...bytes.slice(0, 5));
+  if (!headerStr.startsWith("%PDF")) {
+    console.error("Downloaded file is not a valid PDF. Header:", headerStr);
+    alert("PDF export error: The generated file is not a valid standard PDF.");
+    return;
+  }
+
+  const cleanFilename = filename.toLowerCase().endsWith(".pdf") ? filename : `${filename}.pdf`;
+  const blob = new Blob([bytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  const cleanFilename = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
   a.setAttribute("download", cleanFilename);
   a.download = cleanFilename;
   document.body.appendChild(a);

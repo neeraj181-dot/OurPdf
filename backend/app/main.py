@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, documents, history, health, ocr, document, ai, convert
+from app.api.routes import auth, documents, history, health, ocr, document, ai, convert, tools
 from app.core.config import settings
 from app.database.database import Base, engine
 import app.models # Ensure all models are registered with Base.metadata
@@ -42,6 +42,7 @@ app.include_router(ocr.router, prefix=settings.API_V1_STR)
 app.include_router(document.router, prefix=settings.API_V1_STR)
 app.include_router(ai.router, prefix=settings.API_V1_STR)
 app.include_router(convert.router, prefix=settings.API_V1_STR)
+app.include_router(tools.router, prefix=settings.API_V1_STR)
 
 
 @app.get("/")
