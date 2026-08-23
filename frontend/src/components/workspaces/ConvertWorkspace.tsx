@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FileImage,
   ImagePlus,
@@ -24,6 +24,24 @@ import { apiPdfToExcel, apiPdfToPowerpoint } from "../../lib/api";
 import { soundEffects } from "../../lib/audio";
 import { PDFDocument } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
+
+const ImageCardThumbnail: React.FC<{ file: File; alt: string }> = ({ file, alt }) => {
+  const [src, setSrc] = useState<string>("");
+
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setSrc(objectUrl);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [file]);
+
+  if (!src) {
+    return <div className="w-full h-full bg-zinc-900 animate-pulse" />;
+  }
+
+  return <img src={src} alt={alt} className="w-full h-full object-cover" />;
+};
 
 interface ConvertWorkspaceProps {
   mode: "pdf-to-img" | "pdf-to-png" | "pdf-to-jpg" | "img-to-pdf" | "img-to-svg" | "pdf-to-excel" | "pdf-to-powerpoint";
@@ -413,17 +431,14 @@ export const ConvertWorkspace: React.FC<ConvertWorkspaceProps> = ({
                 {imageFiles.map((file, idx) => (
                   <div key={idx} className="bg-[#202020] p-2 rounded-lg border border-zinc-800 relative group">
                     <div className="aspect-square bg-zinc-900 rounded overflow-hidden flex items-center justify-center">
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt={file.name}
-                        className="w-full h-full object-cover"
-                      />
+                      <ImageCardThumbnail file={file} alt={file.name} />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
                       <span className="truncate max-w-[100px]">{file.name}</span>
                       <button
                         onClick={() => setImageFiles((prev) => prev.filter((_, i) => i !== idx))}
                         className="p-1 rounded hover:bg-rose-950 text-rose-400 cursor-pointer"
+                        title="Delete image"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -434,14 +449,24 @@ export const ConvertWorkspace: React.FC<ConvertWorkspaceProps> = ({
 
               <button
                 onClick={() => {
+                  if (isProcessing || imageFiles.length === 0) return;
                   soundEffects.playClick();
                   onImagesToPdfRun(imageFiles);
                 }}
-                disabled={isProcessing}
-                className="mt-2 w-full flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs py-3.5 rounded-full transition-all shadow-lg cursor-pointer"
+                disabled={isProcessing || imageFiles.length === 0}
+                className="mt-2 w-full flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] disabled:opacity-60 disabled:cursor-not-allowed text-black font-extrabold text-xs py-3.5 rounded-full transition-all shadow-lg cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4 text-black stroke-[3]" />
-                <span>COMPILE {imageFiles.length} IMAGES INTO PDF</span>
+                {isProcessing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 text-black stroke-[2.5] animate-spin" />
+                    <span>COMPILING PDF…</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-black stroke-[3]" />
+                    <span>COMPILE {imageFiles.length} IMAGES INTO PDF</span>
+                  </>
+                )}
               </button>
             </div>
           )}

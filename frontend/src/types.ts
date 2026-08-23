@@ -4,10 +4,10 @@ export interface PDFTool {
   id: string;
   title: string;
   description: string;
-  category: ToolCategory;
+  category: "edit" | "merge-split" | "security" | "convert" | "pages" | "create" | "optimize";
   iconName: string;
-  badge?: "POPULAR" | "NEW" | "FAST";
-  accentBg?: string; // Subtle neutral/muted backdrop for icon box
+  badge?: "POPULAR" | "NEW" | "FAST" | "READY";
+  accentBg: string;
 }
 
 export interface PDFFileItem {

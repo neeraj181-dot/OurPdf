@@ -439,12 +439,33 @@ export default function App() {
     setIsProcessing(true);
     try {
       const output = await imagesToPDF(imgFiles);
+      const outName = "compiled-images.pdf";
       setDownloadBytes(output);
-      setDownloadFileName("Converted_Images.pdf");
+      setDownloadFileName(outName);
+      downloadPdfBytes(output, outName);
+      setCloudNotification(`PDF created successfully — ${imgFiles.length} images compiled.`);
+      setTimeout(() => setCloudNotification(null), 5000);
       soundEffects.playSuccess();
+
+      // Track download in backend/local persistence
+      if (user) {
+        apiRecordDownload(output, outName, "Image → PDF")
+          .then(() => setDocsRefreshKey((k) => k + 1))
+          .catch((err) => console.warn("Backend download recording warning:", err));
+      } else {
+        recordDownloadedDoc(
+          outName,
+          output.length,
+          imgFiles.length,
+          "Image → PDF",
+          new Blob([output], { type: "application/pdf" })
+        )
+          .then(() => setDocsRefreshKey((k) => k + 1))
+          .catch((err) => console.warn("Local download recording warning:", err));
+      }
     } catch (e: any) {
-      console.error(e);
-      alert(`Failed to convert images to PDF: ${e?.message || "Operation failed"}`);
+      console.error("Image to PDF compile error:", e);
+      alert(`Failed to compile images to PDF: ${e?.message || "Operation failed"}`);
     } finally {
       setIsProcessing(false);
     }
