@@ -4,11 +4,16 @@ import {
   Search,
   CheckCircle2,
   AlertCircle,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  FileText,
+  ShieldCheck,
 } from "lucide-react";
-import { PDFDocument } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
 import { PDFFileItem } from "../../types";
 import { downloadPdfBytes, fileToArrayBuffer } from "../../lib/pdfEngine";
+import { apiProtectPdf } from "../../lib/api";
 import { soundEffects } from "../../lib/audio";
 
 interface SecuritySearchWorkspaceProps {
@@ -30,6 +35,8 @@ export const SecuritySearchWorkspace: React.FC<SecuritySearchWorkspaceProps> = (
   // Password State
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -42,28 +49,30 @@ export const SecuritySearchWorkspace: React.FC<SecuritySearchWorkspaceProps> = (
   // 1. PROTECT PDF (Password Encryption)
   const handleProtectPdf = async () => {
     if (!activeFile) return;
-    if (!password) {
+    if (!password || !password.trim()) {
       setErrorMsg("Please enter a password.");
       return;
     }
     if (password !== confirmPassword) {
-      setErrorMsg("Passwords do not match.");
+      setErrorMsg("Passwords do not match. Please re-enter.");
       return;
     }
 
     soundEffects.playClick();
     setIsProcessing(true);
     setErrorMsg(null);
+    setSuccessMsg(null);
 
     try {
-      const buffer = await fileToArrayBuffer(activeFile.file);
-      const pdfDoc = await PDFDocument.load(buffer);
-
-      // Save PDF with encrypted standard permission
-      const protectedBytes = await pdfDoc.save();
+      // Perform genuine backend AES-256 PDF encryption
+      const protectedBytes = await apiProtectPdf(activeFile.file, password);
       soundEffects.playSuccess();
-      setSuccessMsg(`PDF protected successfully with password.`);
-      downloadPdfBytes(protectedBytes, `protected_${activeFile.name}`);
+      setSuccessMsg("PDF protected successfully.");
+      downloadPdfBytes(protectedBytes, "protected.pdf");
+
+      // Securely clear password state
+      setPassword("");
+      setConfirmPassword("");
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to protect PDF.");
     } finally {
@@ -166,35 +175,87 @@ export const SecuritySearchWorkspace: React.FC<SecuritySearchWorkspaceProps> = (
           {/* MODE 1: PROTECT */}
           {mode === "protect" && (
             <div className="flex flex-col gap-4 max-w-md mx-auto w-full">
-              <div className="flex flex-col gap-1 text-xs">
-                <label className="font-bold text-zinc-300">Set Document Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter strong password..."
-                  className="bg-zinc-900 text-white p-3 rounded-lg border border-zinc-800 focus:border-[#1DB954] focus:outline-none"
-                />
+              {/* Selected File Card */}
+              <div className="bg-[#202020] p-3.5 rounded-xl border border-zinc-800 flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-700 text-[#1DB954] shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white truncate max-w-[240px]">{activeFile.name}</p>
+                    <p className="text-[11px] text-zinc-400">
+                      {activeFile.pagesCount ? `${activeFile.pagesCount} pages • ` : ""}
+                      {(activeFile.size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-1 rounded-md shrink-0">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Ready</span>
+                </div>
               </div>
 
-              <div className="flex flex-col gap-1 text-xs">
+              {/* Password Input */}
+              <div className="flex flex-col gap-1.5 text-xs">
+                <label className="font-bold text-zinc-300">PDF Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password"
+                    className="w-full bg-zinc-900 text-white p-3 pr-10 rounded-lg border border-zinc-800 focus:border-[#1DB954] focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 cursor-pointer p-1"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm Password Input */}
+              <div className="flex flex-col gap-1.5 text-xs">
                 <label className="font-bold text-zinc-300">Confirm Password</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password..."
-                  className="bg-zinc-900 text-white p-3 rounded-lg border border-zinc-800 focus:border-[#1DB954] focus:outline-none"
-                />
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter password"
+                    className="w-full bg-zinc-900 text-white p-3 pr-10 rounded-lg border border-zinc-800 focus:border-[#1DB954] focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 cursor-pointer p-1"
+                    title={showConfirmPassword ? "Hide password" : "Show password"}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
+              {/* Protect PDF Button */}
               <button
                 onClick={handleProtectPdf}
                 disabled={isProcessing}
-                className="mt-2 w-full flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs py-3.5 rounded-full transition-all cursor-pointer shadow-lg disabled:opacity-50"
+                className="mt-2 w-full flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] disabled:opacity-60 disabled:cursor-not-allowed text-black font-extrabold text-xs py-3.5 rounded-full transition-all cursor-pointer shadow-lg"
               >
-                <Lock className="w-4 h-4" />
-                <span>{isProcessing ? "ENCRYPTING PDF..." : "ENCRYPT & PROTECT PDF"}</span>
+                {isProcessing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 text-black stroke-[2.5] animate-spin" />
+                    <span>PROTECTING PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4 stroke-[2.5]" />
+                    <span>Protect PDF</span>
+                  </>
+                )}
               </button>
             </div>
           )}

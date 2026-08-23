@@ -60,6 +60,7 @@ import {
   apiGetDocuments,
   apiRecordDownload,
   apiUploadToGoogleDrive,
+  apiProtectPdf,
 } from "./lib/api";
 
 export default function App() {
@@ -475,12 +476,16 @@ export default function App() {
     if (!activeFile || !pwd) return;
     setIsProcessing(true);
     try {
-      const buffer = await activeFile.file.arrayBuffer();
-      setDownloadBytes(new Uint8Array(buffer));
-      setDownloadFileName(`Protected_${activeFile.name}`);
+      const output = await apiProtectPdf(activeFile.file, pwd);
+      setDownloadBytes(output);
+      setDownloadFileName("protected.pdf");
+      downloadPdfBytes(output, "protected.pdf");
+      setCloudNotification("PDF protected successfully.");
+      setTimeout(() => setCloudNotification(null), 4000);
       soundEffects.playSuccess();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Failed to protect PDF: ${e?.message || "Operation failed"}`);
     } finally {
       setIsProcessing(false);
     }
