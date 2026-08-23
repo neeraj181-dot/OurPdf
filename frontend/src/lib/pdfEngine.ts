@@ -248,57 +248,130 @@ export async function addPageNumbers(
 }
 
 /**
- * Converts image files (JPG, PNG, WebP) into a single PDF Uint8Array
+ * Converts image files (JPG, JPEG, PNG, WebP) into a single PDF Uint8Array.
+ * - Standard A4 page size with proportional scaling (no distortion/stretching).
+ * - Preserves image orientation (portrait or landscape).
+ * - Yields to the event loop so 60+ large images compile smoothly without freezing the browser.
  */
-export async function imagesToPDF(imageFiles: File[]): Promise<Uint8Array> {
-  const pdfDoc = await PDFDocument.create();
+export async function imagesToPDF(
+  imageFiles: File[],
+  onProgress?: (current: number, total: number) => void
+): Promise<Uint8Array> {
+  if (!imageFiles || imageFiles.length === 0) {
+    throw new Error("No images provided for PDF compilation.");
+  }
 
-  for (const imgFile of imageFiles) {
-    let embeddedImage = null;
-    try {
-      const arrayBuffer = await fileToArrayBuffer(imgFile);
-      if (imgFile.type.includes("png")) {
-        embeddedImage = await pdfDoc.embedPng(arrayBuffer);
-      } else if (imgFile.type.includes("jpeg") || imgFile.type.includes("jpg")) {
-        embeddedImage = await pdfDoc.embedJpg(arrayBuffer);
-      } else {
-        throw new Error("Needs canvas conversion");
-      }
-    } catch {
-      // Robust fallback for WebP, BMP, and custom images via Canvas
+  const pdfDoc = await PDFDocument.create();
+  const A4_PORTRAIT_WIDTH = 595.28;
+  const A4_PORTRAIT_HEIGHT = 841.89;
+
+  for (let idx = 0; idx < imageFiles.length; idx++) {
+    const imgFile = imageFiles[idx];
+    if (onProgress) {
+      onProgress(idx + 1, imageFiles.length);
+    }
+
+    let embeddedImage: any = null;
+    const isPng = imgFile.type === "image/png" || imgFile.name.toLowerCase().endsWith(".png");
+    const isJpg =
+      imgFile.type === "image/jpeg" ||
+      imgFile.type === "image/jpg" ||
+      imgFile.name.toLowerCase().endsWith(".jpg") ||
+      imgFile.name.toLowerCase().endsWith(".jpeg");
+
+    // Attempt direct pdf-lib embedding first for PNG and JPEG
+    if (isPng || isJpg) {
       try {
-        const img = new Image();
-        const objectUrl = URL.createObjectURL(imgFile);
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          img.src = objectUrl;
-        });
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth || img.width || 800;
-        canvas.height = img.naturalHeight || img.height || 600;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0);
-          const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-          const base64 = dataUrl.split(",")[1];
-          const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-          embeddedImage = await pdfDoc.embedJpg(bytes);
+        const arrayBuffer = await fileToArrayBuffer(imgFile);
+        if (isPng) {
+          embeddedImage = await pdfDoc.embedPng(arrayBuffer);
+        } else {
+          embeddedImage = await pdfDoc.embedJpg(arrayBuffer);
         }
-        URL.revokeObjectURL(objectUrl);
-      } catch (fallbackErr) {
-        console.warn(`Could not embed image ${imgFile.name}:`, fallbackErr);
+      } catch (directEmbedErr) {
+        console.warn(`Direct embedding failed for ${imgFile.name}, falling back to canvas decoding:`, directEmbedErr);
+        embeddedImage = null;
       }
     }
 
-    if (embeddedImage) {
-      const page = pdfDoc.addPage([embeddedImage.width, embeddedImage.height]);
-      page.drawImage(embeddedImage, {
-        x: 0,
-        y: 0,
-        width: embeddedImage.width,
-        height: embeddedImage.height,
-      });
+    // Canvas fallback for WebP, custom formats, or when direct embedding throws
+    if (!embeddedImage) {
+      try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const objectUrl = URL.createObjectURL(imgFile);
+          const el = new Image();
+          el.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(el);
+          };
+          el.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error(`Failed to decode image "${imgFile.name}"`));
+          };
+          el.src = objectUrl;
+        });
+
+        const naturalW = img.naturalWidth || img.width || 800;
+        const naturalH = img.naturalHeight || img.height || 600;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = naturalW;
+        canvas.height = naturalH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          throw new Error("Could not create 2D canvas context");
+        }
+
+        // Fill white background for clean rendering
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, naturalW, naturalH);
+        ctx.drawImage(img, 0, 0, naturalW, naturalH);
+
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+        const base64Data = dataUrl.split(",")[1];
+        const binaryStr = atob(base64Data);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let b = 0; b < binaryStr.length; b++) {
+          bytes[b] = binaryStr.charCodeAt(b);
+        }
+
+        embeddedImage = await pdfDoc.embedJpg(bytes);
+      } catch (canvasErr: any) {
+        console.error(`Canvas fallback error on ${imgFile.name}:`, canvasErr);
+        throw new Error(`Could not process image "${imgFile.name}": ${canvasErr?.message || "Format unsupported"}`);
+      }
+    }
+
+    if (!embeddedImage) {
+      throw new Error(`Failed to compile image "${imgFile.name}" into PDF.`);
+    }
+
+    // Determine orientation based on natural aspect ratio
+    const imgWidth = embeddedImage.width;
+    const imgHeight = embeddedImage.height;
+    const isLandscape = imgWidth > imgHeight;
+
+    const pageWidth = isLandscape ? A4_PORTRAIT_HEIGHT : A4_PORTRAIT_WIDTH;
+    const pageHeight = isLandscape ? A4_PORTRAIT_WIDTH : A4_PORTRAIT_HEIGHT;
+
+    // Scale proportionally to fit completely inside the page without distortion
+    const scale = Math.min(pageWidth / imgWidth, pageHeight / imgHeight);
+    const drawWidth = imgWidth * scale;
+    const drawHeight = imgHeight * scale;
+    const x = (pageWidth - drawWidth) / 2;
+    const y = (pageHeight - drawHeight) / 2;
+
+    const page = pdfDoc.addPage([pageWidth, pageHeight]);
+    page.drawImage(embeddedImage, {
+      x,
+      y,
+      width: drawWidth,
+      height: drawHeight,
+    });
+
+    // Yield control to browser UI thread to maintain responsiveness with 60+ images
+    if (idx % 2 === 0 || idx === imageFiles.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
   }
 
