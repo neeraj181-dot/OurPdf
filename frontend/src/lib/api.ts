@@ -925,4 +925,26 @@ export async function apiExportOrganizedPdf(file: File, options: ExportOrganized
   return new Uint8Array(arrayBuffer);
 }
 
+// 11. Protect PDF (Password Encryption API)
+export async function apiProtectPdf(file: File, password: string): Promise<Uint8Array> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  formData.append("password", password);
+
+  const res = await fetch(`${API_BASE_URL}/tools/protect-pdf`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to protect PDF document" }));
+    throw new Error(err.detail || "Failed to protect PDF document");
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+
 
