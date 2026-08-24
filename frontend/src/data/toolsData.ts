@@ -3,6 +3,15 @@ import { PDFTool } from "../types";
 export const PDF_TOOLS: PDFTool[] = [
   // 1. CREATE & EDIT
   {
+    id: "bit-notes-maker",
+    title: "Bit Notes Maker",
+    description: "Arrange your small notes into compact printable sheets with cut lines for physical study.",
+    category: "create",
+    iconName: "StickyNote",
+    badge: "NEW",
+    accentBg: "bg-zinc-800/80 border-zinc-700/50",
+  },
+  {
     id: "create-pdf",
     title: "Create PDF",
     description: "Word-style PDF editor: Create new documents from scratch with continuous A4 pages, formatting, tables, and images.",

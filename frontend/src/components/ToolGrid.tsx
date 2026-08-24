@@ -33,6 +33,7 @@ import {
   Crop,
   Presentation,
   FileSpreadsheet,
+  StickyNote,
 } from "lucide-react";
 import { PDFTool } from "../types";
 import { soundEffects } from "../lib/audio";
@@ -116,6 +117,8 @@ export const ToolGrid: React.FC<ToolGridProps> = ({
         return <Presentation className={iconClass} />;
       case "FileSpreadsheet":
         return <FileSpreadsheet className={iconClass} />;
+      case "StickyNote":
+        return <StickyNote className={iconClass} />;
       default:
         return <FileText className={iconClass} />;
     }
