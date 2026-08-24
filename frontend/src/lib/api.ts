@@ -846,8 +846,15 @@ export interface DetectedHeadingItem {
   page: number;
   position?: number;
   fontSize?: number;
+  fontFamily?: string;
   isBold?: boolean;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
   color?: string;
+  highlight?: string;
+  align?: "left" | "center" | "right" | "justify";
   bbox?: number[];
   isEdited?: boolean;
 }
@@ -869,10 +876,38 @@ export interface DetectedStructureResponse {
   textElements?: DetectedHeadingItem[];
 }
 
+export interface InsertedElementItem {
+  id: string;
+  type: "text" | "image" | "signature" | "shape";
+  page: number; // 1-indexed
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  color?: string;
+  highlight?: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  align?: "left" | "center" | "right" | "justify";
+  shapeType?: "rectangle" | "circle" | "line" | "arrow";
+  borderColor?: string;
+  fillColor?: string;
+  strokeWidth?: number;
+  dataUrl?: string; // base64 for image / signature
+  rotation?: number;
+}
+
 export interface ExportOrganizedPdfOptions {
   title?: string;
   headings: DetectedHeadingItem[];
   text_elements?: DetectedHeadingItem[];
+  inserted_elements?: InsertedElementItem[];
+  page_rotations?: Record<number, number>;
   header_text?: string;
   footer_text?: string;
   show_page_numbers?: boolean;
@@ -904,6 +939,8 @@ export async function apiExportOrganizedPdf(file: File, options: ExportOrganized
   if (options.title) formData.append("title", options.title);
   formData.append("headings", JSON.stringify(options.headings || []));
   if (options.text_elements) formData.append("text_elements", JSON.stringify(options.text_elements));
+  if (options.inserted_elements) formData.append("inserted_elements", JSON.stringify(options.inserted_elements));
+  if (options.page_rotations) formData.append("page_rotations", JSON.stringify(options.page_rotations));
   if (options.header_text) formData.append("header_text", options.header_text);
   if (options.footer_text) formData.append("footer_text", options.footer_text);
   formData.append("show_page_numbers", String(options.show_page_numbers ?? true));

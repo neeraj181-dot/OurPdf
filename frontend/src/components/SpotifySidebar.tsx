@@ -18,6 +18,7 @@ import {
   Download,
   MoreVertical,
   X,
+  StickyNote,
 } from "lucide-react";
 import { PDFFileItem } from "../types";
 import { UserProfile } from "../lib/api";
@@ -409,6 +410,20 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 <FileCheck className="w-3 h-3 text-[#1DB954]" />
               </div>
               <span className="truncate">Executive Brief</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("bit-notes-maker");
+              }}
+              title="Arrange small notes into compact printable sheets with cut lines"
+              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+            >
+              <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
+                <StickyNote className="w-3 h-3 text-[#1DB954]" />
+              </div>
+              <span className="truncate">Bit Notes Maker</span>
             </button>
 
             <button

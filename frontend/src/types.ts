@@ -4,7 +4,7 @@ export interface PDFTool {
   id: string;
   title: string;
   description: string;
-  category: "edit" | "merge-split" | "security" | "convert" | "pages" | "create" | "optimize";
+  category: "edit" | "merge-split" | "security" | "convert" | "pages" | "create" | "optimize" | "enhance";
   iconName: string;
   badge?: "POPULAR" | "NEW" | "FAST" | "READY";
   accentBg: string;
@@ -75,3 +75,41 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
 }
+
+export interface BitNoteItem {
+  id: string;
+  title: string;
+  sourceType: "image" | "pdf_page";
+  file?: File;
+  dataUrl: string;
+  width: number;
+  height: number;
+  aspectRatio: number;
+  rotation: number; // 0, 90, 180, 270 degrees
+  pageIndex?: number;
+  originalFileName: string;
+}
+
+export type PaperSize = "A4" | "A3" | "Letter" | "Custom";
+export type Orientation = "portrait" | "landscape";
+export type CutLineStyle = "none" | "light" | "dashed" | "crop-marks";
+export type NoteBorderStyle = "none" | "thin" | "medium";
+export type PresetLayout = "12-per-page" | "8-per-page" | "6-per-page" | "4-per-page" | "custom";
+
+export interface BitNotesLayoutOptions {
+  paperSize: PaperSize;
+  customWidthMm?: number;
+  customHeightMm?: number;
+  orientation: Orientation;
+  preset: PresetLayout;
+  columns: number;
+  rows: number;
+  outerMarginMm: number; // e.g. 5, 10, 15, 20
+  gapMm: number; // e.g. 0, 2, 4, 5, 10
+  autoFit: boolean; // Maintain aspect ratio without distorting
+  autoRotate: boolean; // Auto-rotate notes to best fit cell orientation
+  cutLines: CutLineStyle; // dashed, light, crop-marks, none
+  borders: NoteBorderStyle; // thin, medium, none
+  smartPacking?: boolean;
+}
+

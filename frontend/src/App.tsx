@@ -47,6 +47,7 @@ import { PageNumbersWorkspace } from "./components/workspaces/PageNumbersWorkspa
 import { MyDocumentsWorkspace } from "./components/workspaces/MyDocumentsWorkspace";
 import { ProfileWorkspace } from "./components/workspaces/ProfileWorkspace";
 import { SecuritySearchWorkspace } from "./components/workspaces/SecuritySearchWorkspace";
+import { BitNotesWorkspace } from "./components/workspaces/BitNotesWorkspace";
 import { AuthModal } from "./components/AuthModal";
 import { RenameDocModal } from "./components/RenameDocModal";
 import { GoogleDrivePickerModal } from "./components/GoogleDrivePickerModal";
@@ -874,6 +875,18 @@ export default function App() {
                 {/* VIEW 2: ACTIVE WORKSPACE TOOL STAGE */}
                 {activeToolId && (
                   <div className="flex flex-col gap-6">
+                    {/* TOOL: BIT NOTES MAKER */}
+                    {(activeToolId === "bit-notes-maker" || activeToolId === "bit-notes") && (
+                      <BitNotesWorkspace
+                        activeFile={activeFile}
+                        user={user}
+                        onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onSaveToGoogleDrive={handleSaveToGoogleDrive}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
+                      />
+                    )}
+
                     {/* TOOL 1: MERGE */}
                     {activeToolId === "merge" && (
                       <MergeWorkspace
@@ -1059,6 +1072,8 @@ export default function App() {
 
                     {/* Fallback if no file is selected for single-file tools */}
                     {!activeFile &&
+                      activeToolId !== "bit-notes-maker" &&
+                      activeToolId !== "bit-notes" &&
                       activeToolId !== "merge" &&
                       activeToolId !== "img-to-pdf" &&
                       activeToolId !== "img-to-svg" &&

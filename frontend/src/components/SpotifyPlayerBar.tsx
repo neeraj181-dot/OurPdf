@@ -46,6 +46,8 @@ export const SpotifyPlayerBar: React.FC<SpotifyPlayerBarProps> = ({
   isSavingToGoogleDrive,
 }) => {
   const isInteractiveWorkspace =
+    activeToolId === "bit-notes-maker" ||
+    activeToolId === "bit-notes" ||
     activeToolId === "remove-watermark" ||
     activeToolId === "editor" ||
     activeToolId === "browse" ||
