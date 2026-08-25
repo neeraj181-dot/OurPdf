@@ -420,6 +420,8 @@ async def tool_export_organized_pdf(
     title: Optional[str] = Form(None),
     headings: str = Form("[]"),
     text_elements: str = Form("[]"),
+    inserted_elements: str = Form("[]"),
+    page_rotations: Optional[str] = Form(None),
     header_text: Optional[str] = Form(None),
     footer_text: Optional[str] = Form(None),
     show_page_numbers: bool = Form(True),
@@ -433,13 +435,17 @@ async def tool_export_organized_pdf(
     try:
         headings_list = json.loads(headings) if isinstance(headings, str) else (headings or [])
         elements_list = json.loads(text_elements) if isinstance(text_elements, str) else (text_elements or [])
+        inserted_list = json.loads(inserted_elements) if isinstance(inserted_elements, str) else (inserted_elements or [])
         order_list = json.loads(page_order) if page_order and isinstance(page_order, str) else None
+        rotations_dict = json.loads(page_rotations) if page_rotations and isinstance(page_rotations, str) else None
 
         output_bytes = PdfToolsService.export_organized_pdf(
             pdf_bytes=file_bytes,
             title=title,
             headings=headings_list,
             text_elements=elements_list,
+            inserted_elements=inserted_list,
+            page_rotations=rotations_dict,
             header_text=header_text,
             footer_text=footer_text,
             show_page_numbers=show_page_numbers,
@@ -448,7 +454,7 @@ async def tool_export_organized_pdf(
         )
 
         orig_name = (file.filename or "document.pdf").rsplit(".", 1)[0]
-        export_filename = f"{orig_name}-organized.pdf"
+        export_filename = f"{orig_name}-edited.pdf"
 
         return Response(
             content=output_bytes,
@@ -460,4 +466,72 @@ async def tool_export_organized_pdf(
         )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# -------------------------------------------------------------
+# 12. PROTECT PDF (GENUINE AES-256 PDF ENCRYPTION)
+# -------------------------------------------------------------
+@router.post("/protect-pdf")
+async def tool_protect_pdf(
+    file: Optional[UploadFile] = File(None),
+    password: Optional[str] = Form(None),
+):
+    if file is None or not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No PDF file uploaded.",
+        )
+
+    filename = file.filename.lower()
+    if not filename.endswith(".pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file format. Please upload a valid PDF document.",
+        )
+
+    if not password or not password.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password is required and cannot be empty.",
+        )
+
+    file_bytes = await file.read()
+    if len(file_bytes) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded PDF file is empty.",
+        )
+
+    # 50MB file size limit
+    if len(file_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size exceeds maximum allowed limit of 50MB.",
+        )
+
+    if not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid PDF file. The uploaded file is corrupted or not a valid PDF.",
+        )
+
+    try:
+        protected_bytes = PdfToolsService.protect_pdf(
+            pdf_bytes=file_bytes,
+            password=password,
+        )
+
+        return Response(
+            content=protected_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": 'attachment; filename="protected.pdf"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+            },
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        print(f"Protect PDF error: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to protect PDF document.")
 

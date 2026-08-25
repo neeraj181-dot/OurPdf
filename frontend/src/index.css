@@ -1,44 +1,64 @@
 @import "tailwindcss";
 
+@layer base {
+  :root {
+    --bg-main: #0f1011;
+    --bg-sidebar: #121315;
+    --bg-surface: #17191b;
+    --bg-hover: #1d2023;
+    --border-color: #292c30;
+    --text-primary: #f1f3f5;
+    --text-secondary: #9aa0a6;
+    --text-muted: #5f6368;
+    --accent-green: #1db954;
+  }
+
+  body {
+    background-color: #0f1011;
+    color: #f1f3f5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
 @layer utilities {
-  /* Custom Spotify Sleek Scrollbars */
+  /* Professional Sleek Desktop Scrollbars */
   .custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
   .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #282828;
-    border-radius: 9999px;
+    background: #292c30;
+    border-radius: 4px;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #3e3e3e;
+    background: #3e4248;
   }
 
-  /* Hide scrollbar for chrome, safari and opera */
+  /* Hide scrollbar */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
-  /* Hide scrollbar for IE, Edge and Firefox */
   .no-scrollbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: scale(0.98);
   }
   to {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.15s ease-out forwards;
 }
+

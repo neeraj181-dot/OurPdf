@@ -14,11 +14,59 @@ from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from PIL import Image
+from pypdf import PdfReader, PdfWriter
 
 from app.services.ocr_service import OCRService
 
 
 class PdfToolsService:
+    # -------------------------------------------------------------
+    # TOOL 0: PROTECT PDF (AES-256 PASSWORD ENCRYPTION)
+    # -------------------------------------------------------------
+    @staticmethod
+    def protect_pdf(pdf_bytes: bytes, password: str) -> bytes:
+        """
+        Encrypt PDF document using modern AES-256 password encryption via pypdf.
+        The output is a standard encrypted PDF requiring password authentication
+        in Adobe Acrobat, Edge, Chrome, and all standard PDF readers.
+        """
+        if not pdf_bytes or len(pdf_bytes) == 0:
+            raise ValueError("Uploaded PDF document is empty.")
+
+        if not password or not str(password).strip():
+            raise ValueError("Password is required and cannot be empty.")
+
+        try:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            if reader.is_encrypted:
+                raise ValueError("This PDF document is already password-protected.")
+
+            if len(reader.pages) == 0:
+                raise ValueError("PDF document contains no pages.")
+
+            writer = PdfWriter()
+            writer.append(reader)
+
+            # Standard AES-256 encryption supported by modern PDF viewers
+            writer.encrypt(
+                user_password=password,
+                owner_password=password,
+                algorithm="AES-256",
+            )
+
+            output_stream = io.BytesIO()
+            writer.write(output_stream)
+            output_bytes = output_stream.getvalue()
+
+            if not output_bytes or len(output_bytes) == 0:
+                raise ValueError("Failed to generate encrypted PDF.")
+
+            return output_bytes
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(f"Failed to encrypt PDF document: {str(e)}")
+
     # -------------------------------------------------------------
     # TOOL 1: COMPRESS PDF
     # -------------------------------------------------------------
@@ -930,12 +978,16 @@ class PdfToolsService:
     # -------------------------------------------------------------
     # TOOL 11: EXPORT ORGANIZED PDF (TITLE, BOOKMARKS, HEADINGS, HEADER/FOOTER, PAGE NUMBERS)
     # -------------------------------------------------------------
+    # TOOL 11: EXPORT ORGANIZED & EDITED PDF
+    # -------------------------------------------------------------
     @staticmethod
     def export_organized_pdf(
         pdf_bytes: bytes,
         title: Optional[str] = None,
         headings: Optional[List[Dict[str, Any]]] = None,
         text_elements: Optional[List[Dict[str, Any]]] = None,
+        inserted_elements: Optional[List[Dict[str, Any]]] = None,
+        page_rotations: Optional[Dict[Union[int, str], int]] = None,
         header_text: Optional[str] = None,
         footer_text: Optional[str] = None,
         show_page_numbers: bool = True,
@@ -953,19 +1005,53 @@ class PdfToolsService:
         if len(doc) == 0:
             raise ValueError("PDF document contains no pages.")
 
+        def parse_hex_color(hex_str: Optional[str], default=(0.08, 0.08, 0.1)):
+            if not hex_str or not isinstance(hex_str, str):
+                return default
+            s = hex_str.strip().lstrip("#")
+            if len(s) == 3:
+                s = "".join([c * 2 for c in s])
+            if len(s) == 6:
+                try:
+                    return (int(s[0:2], 16) / 255.0, int(s[2:4], 16) / 255.0, int(s[4:6], 16) / 255.0)
+                except ValueError:
+                    return default
+            return default
+
+        def decode_data_url(data_url: Optional[str]) -> Optional[bytes]:
+            if not data_url or not isinstance(data_url, str):
+                return None
+            try:
+                import base64
+                if "," in data_url:
+                    data_url = data_url.split(",", 1)[1]
+                return base64.b64decode(data_url)
+            except Exception:
+                return None
+
         # 1. Apply page reordering / duplicate / delete if page_order provided
         if page_order is not None and len(page_order) > 0:
             valid_order = [p for p in page_order if 0 <= p < len(doc)]
             if valid_order:
                 doc.select(valid_order)
 
-        # 2. Update PDF Metadata
+        # 2. Apply page rotations if provided
+        if page_rotations:
+            for p_key, deg in page_rotations.items():
+                try:
+                    p_idx = int(p_key) - 1
+                    if 0 <= p_idx < len(doc):
+                        doc[p_idx].set_rotation(int(deg) % 360)
+                except Exception:
+                    pass
+
+        # 3. Update PDF Metadata
         meta = doc.metadata or {}
         if title and title.strip():
             meta["title"] = title.strip()
         doc.set_metadata(meta)
 
-        # 3. Apply In-Place Text Replacements onto PDF Pages (All Text Blocks)
+        # 4. Apply In-Place Text Replacements onto PDF Pages (All Edited Text Blocks)
         elements_to_apply = text_elements or headings or []
         for el in elements_to_apply:
             txt = (el.get("text") or "").strip()
@@ -986,9 +1072,16 @@ class PdfToolsService:
                     cover_rect = fitz.Rect(x0 - 2, y0 - 1, max(x1 + 6, x0 + 60), y1 + 3)
                     page.draw_rect(cover_rect, color=(1, 1, 1), fill=(1, 1, 1))
 
+                    # If highlight color is specified
+                    if el.get("highlight"):
+                        hl_color = parse_hex_color(el.get("highlight"), (1, 1, 0.4))
+                        page.draw_rect(cover_rect, color=hl_color, fill=hl_color)
+
                     # Redraw updated text
-                    is_bold = bool(el.get("isBold", False) or el.get("level") in ("Title", "H1"))
-                    font_name = "hebo" if is_bold else "helv"
+                    is_bold = bool(el.get("isBold", False) or el.get("bold") or el.get("level") in ("Title", "H1"))
+                    is_italic = bool(el.get("italic", False))
+                    font_name = "hebi" if (is_bold and is_italic) else ("hebo" if is_bold else ("heit" if is_italic else "helv"))
+                    text_col = parse_hex_color(el.get("color"), (0.08, 0.08, 0.1))
 
                     # Single line or multi-line fit
                     if len(txt) > 80 or "\n" in txt:
@@ -998,7 +1091,7 @@ class PdfToolsService:
                             txt,
                             fontsize=font_sz,
                             fontname=font_name,
-                            color=(0.08, 0.08, 0.1),
+                            color=text_col,
                         )
                     else:
                         page.insert_text(
@@ -1006,8 +1099,81 @@ class PdfToolsService:
                             txt,
                             fontsize=font_sz,
                             fontname=font_name,
-                            color=(0.08, 0.08, 0.1),
+                            color=text_col,
                         )
+
+        # 5. Apply Inserted Elements (Text Boxes, Images, Signatures, Shapes)
+        if inserted_elements:
+            for item in inserted_elements:
+                pnum = int(item.get("page", 1))
+                page_idx = pnum - 1
+                if not (0 <= page_idx < len(doc)):
+                    continue
+                page = doc[page_idx]
+                itype = item.get("type", "text")
+                x = float(item.get("x", 50))
+                y = float(item.get("y", 50))
+                w = float(item.get("width", 100))
+                h = float(item.get("height", 50))
+                rot_deg = float(item.get("rotation", 0)) % 360
+                cx = x + w / 2.0
+                cy = y + h / 2.0
+                center_pt = fitz.Point(cx, cy)
+                rot_mat = fitz.Matrix(rot_deg) if rot_deg != 0 else None
+                morph_tuple = (center_pt, rot_mat) if rot_deg != 0 else None
+
+                if itype == "text":
+                    txt = item.get("text", "")
+                    if txt:
+                        font_sz = float(item.get("fontSize", 14))
+                        color_tup = parse_hex_color(item.get("color", "#000000"), (0.08, 0.08, 0.1))
+                        is_b = bool(item.get("bold"))
+                        is_i = bool(item.get("italic"))
+                        font_name = "hebi" if (is_b and is_i) else ("hebo" if is_b else ("heit" if is_i else "helv"))
+
+                        if item.get("highlight"):
+                            hl_color = parse_hex_color(item.get("highlight"), (1, 1, 0))
+                            page.draw_rect(fitz.Rect(x, y, x + w, y + h), color=hl_color, fill=hl_color, morph=morph_tuple)
+
+                        rect = fitz.Rect(x, y, x + w, y + h)
+                        if morph_tuple:
+                            page.insert_textbox(rect, txt, fontsize=font_sz, fontname=font_name, color=color_tup, morph=morph_tuple)
+                        else:
+                            page.insert_textbox(rect, txt, fontsize=font_sz, fontname=font_name, color=color_tup)
+
+                elif itype in ("image", "signature"):
+                    img_bytes = decode_data_url(item.get("dataUrl", ""))
+                    if img_bytes:
+                        rect = fitz.Rect(x, y, x + w, y + h)
+                        if rot_deg != 0:
+                            try:
+                                import io
+                                from PIL import Image
+                                pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+                                rot_img = pil_img.rotate(-rot_deg, expand=True, resample=Image.BICUBIC)
+                                buf = io.BytesIO()
+                                rot_img.save(buf, format="PNG")
+                                img_bytes = buf.getvalue()
+                            except Exception as e:
+                                pass
+                        page.insert_image(rect, stream=img_bytes)
+
+                elif itype == "shape":
+                    shape_type = item.get("shapeType", "rectangle")
+                    b_color = parse_hex_color(item.get("borderColor", "#1DB954"), (0.11, 0.73, 0.33))
+                    f_color = parse_hex_color(item.get("fillColor", "")) if item.get("fillColor") else None
+                    s_width = float(item.get("strokeWidth", 2))
+
+                    if shape_type == "rectangle":
+                        page.draw_rect(fitz.Rect(x, y, x + w, y + h), color=b_color, fill=f_color, width=s_width, morph=morph_tuple)
+                    elif shape_type == "circle":
+                        page.draw_oval(fitz.Rect(x, y, x + w, y + h), color=b_color, fill=f_color, width=s_width, morph=morph_tuple)
+                    elif shape_type == "line":
+                        page.draw_line(fitz.Point(x, y + h / 2), fitz.Point(x + w, y + h / 2), color=b_color, width=s_width, morph=morph_tuple)
+                    elif shape_type == "arrow":
+                        p1 = fitz.Point(x, y + h / 2)
+                        p2 = fitz.Point(x + w, y + h / 2)
+                        page.draw_line(p1, p2, color=b_color, width=s_width, morph=morph_tuple)
 
         # 4. Build & Apply PDF Bookmarks / Outline (TOC) for Headings
         if headings is not None:

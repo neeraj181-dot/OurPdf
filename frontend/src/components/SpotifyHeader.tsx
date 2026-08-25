@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import {
   Search,
   Upload,
-  ShieldCheck,
+  Shield,
   ChevronLeft,
   LogIn,
   UserPlus,
@@ -11,6 +11,7 @@ import {
   FolderOpen,
   ArrowDownToLine,
   ChevronDown,
+  HardDrive,
 } from "lucide-react";
 import { ToolCategory } from "../types";
 import { UserProfile } from "../lib/api";
@@ -24,6 +25,7 @@ interface SpotifyHeaderProps {
   onUploadClick: () => void;
   onOpenDrivePicker?: () => void;
   activeToolId: string | null;
+  activeToolTitle?: string | null;
   onBackClick: () => void;
   user: UserProfile | null;
   onOpenAuthModal: (mode?: "login" | "register") => void;
@@ -40,6 +42,7 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
   onUploadClick,
   onOpenDrivePicker,
   activeToolId,
+  activeToolTitle,
   onBackClick,
   user,
   onOpenAuthModal,
@@ -52,7 +55,7 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const uploadMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on click outside
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -67,90 +70,99 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
   }, []);
 
   const categories: { id: ToolCategory; label: string }[] = [
-    { id: "all", label: "All PDF Tools" },
+    { id: "all", label: "All Tools" },
     { id: "create", label: "Create & Edit" },
     { id: "pages", label: "Organize" },
-    { id: "edit", label: "Edit & Annotate" },
-    { id: "enhance", label: "Optimize" },
     { id: "convert", label: "Convert" },
+    { id: "enhance", label: "Optimize" },
     { id: "security", label: "Security" },
   ];
 
   return (
-    <header className="sticky top-0 z-20 bg-[#121215]/95 backdrop-blur-md px-6 py-3 border-b border-zinc-800/80 flex flex-col gap-3 font-sans">
-      {/* Top Bar: Nav Controls, Search, Upload Button & User Pill */}
-      <div className="flex items-center justify-between gap-4">
-        {/* Navigation & Search */}
-        <div className="flex items-center gap-3 flex-1 max-w-xl">
-          <div className="flex items-center gap-1.5 shrink-0">
+    <header className="sticky top-0 z-30 bg-[#0f1011] border-b border-[#292c30] flex flex-col font-sans select-none">
+      {/* Top Application Toolbar */}
+      <div className="h-12 px-4 flex items-center justify-between gap-4">
+        {/* Left: Breadcrumbs & Navigation */}
+        <div className="flex items-center gap-3 shrink-0">
+          {activeToolId && (
             <button
               onClick={() => {
                 soundEffects.playClick();
                 onBackClick();
               }}
-              disabled={!activeToolId}
-              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors border ${
-                activeToolId
-                  ? "bg-zinc-800 text-zinc-100 hover:bg-zinc-700 border-zinc-700 cursor-pointer"
-                  : "bg-zinc-900/50 text-zinc-600 border-zinc-800/60 cursor-not-allowed"
-              }`}
-              title="Back to All PDF Tools"
+              className="w-7 h-7 rounded-md bg-[#17191b] hover:bg-[#1d2023] text-zinc-300 hover:text-white border border-[#292c30] flex items-center justify-center transition-colors cursor-pointer"
+              title="Back to All Tools"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-          </div>
+          )}
 
-          {/* Clean Search Input */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search PDF tools (e.g. Merge, Compress, Watermark, OCR)..."
-              className="w-full bg-zinc-800/80 text-zinc-100 placeholder-zinc-400 text-xs font-normal pl-9 pr-8 py-2 rounded-lg border border-zinc-700/60 focus:border-zinc-500 focus:outline-none transition-colors"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
-              >
-                Clear
-              </button>
-            )}
+          <div className="flex items-center gap-1.5 text-xs text-zinc-400 font-medium">
+            <span className="text-zinc-200 font-semibold">OurPDF</span>
+            <span>/</span>
+            <span className="text-zinc-400 truncate max-w-[180px]">
+              {activeToolTitle || (selectedCategory === "all" ? "All Tools" : categories.find((c) => c.id === selectedCategory)?.label || "Workspace")}
+            </span>
           </div>
         </div>
 
-        {/* Right Bar Actions: Upload PDF, Engine Pill, Sign In / Register / User */}
+        {/* Center: Search Field */}
+        <div className="flex-1 max-w-md relative">
+          <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search tools..."
+            className="w-full bg-[#17191b] text-zinc-200 placeholder-zinc-500 text-xs font-normal pl-8 pr-7 py-1.5 rounded-md border border-[#292c30] focus:border-zinc-500 focus:outline-none transition-colors"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-zinc-500 hover:text-zinc-300"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        {/* Right: Local indicator, Import button, and Account */}
         <div className="flex items-center gap-2.5 shrink-0">
+          {/* Subtle Local Processing Indicator */}
+          <div
+            className="hidden sm:flex items-center gap-1.5 text-[11px] text-zinc-400 px-2 py-1 rounded-md bg-[#17191b] border border-[#292c30] cursor-help"
+            title="Your documents are processed locally in your browser with zero server data retention."
+          >
+            <Shield className="w-3 h-3 text-[#1db954]" />
+            <span>Local processing</span>
+          </div>
+
+          {/* Import Button Dropdown */}
           <div className="relative" ref={uploadMenuRef}>
             <button
               onClick={() => {
                 soundEffects.playClick();
                 setIsUploadMenuOpen(!isUploadMenuOpen);
               }}
-              className="flex items-center gap-1.5 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-3.5 py-2 rounded-lg transition-colors cursor-pointer shadow-md"
+              className="flex items-center gap-1.5 bg-[#1db954] hover:bg-[#1ed760] text-black font-semibold text-xs px-3 py-1.5 rounded-md transition-colors cursor-pointer shadow-xs"
             >
-              <Upload className="w-4 h-4 stroke-[2.5]" />
-              <span>Import Document</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isUploadMenuOpen ? "rotate-180" : ""}`} />
+              <Upload className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Import PDF</span>
+              <ChevronDown className={`w-3 h-3 transition-transform ${isUploadMenuOpen ? "rotate-180" : ""}`} />
             </button>
 
             {isUploadMenuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-52 bg-[#18181b] border border-zinc-800 rounded-xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 text-xs animate-in fade-in zoom-in-95 duration-100 font-sans">
+              <div className="absolute right-0 top-full mt-1.5 w-48 bg-[#17191b] border border-[#292c30] rounded-lg shadow-xl p-1 z-50 flex flex-col gap-0.5 text-xs animate-in fade-in zoom-in-95 duration-100">
                 <button
                   onClick={() => {
                     soundEffects.playClick();
                     setIsUploadMenuOpen(false);
                     onUploadClick();
                   }}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-zinc-200 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left font-medium"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-zinc-200 hover:bg-[#1d2023] hover:text-white transition-colors cursor-pointer text-left"
                 >
-                  <Upload className="w-4 h-4 text-[#1DB954]" />
-                  <div>
-                    <p className="font-semibold text-white">From Device</p>
-                    <p className="text-[10px] text-zinc-400">PDF, PNG, JPG from computer</p>
-                  </div>
+                  <HardDrive className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>From Device</span>
                 </button>
 
                 <button
@@ -159,9 +171,9 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
                     setIsUploadMenuOpen(false);
                     onOpenDrivePicker?.();
                   }}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-zinc-200 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left font-medium"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-zinc-200 hover:bg-[#1d2023] hover:text-white transition-colors cursor-pointer text-left"
                 >
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                  <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
                     <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
                     <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
                     <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
@@ -169,45 +181,34 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
                     <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
                     <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
                   </svg>
-                  <div>
-                    <p className="font-semibold text-white">Google Drive</p>
-                    <p className="text-[10px] text-zinc-400">Import from your Google Drive</p>
-                  </div>
+                  <span>Google Drive</span>
                 </button>
               </div>
             )}
           </div>
 
-          <div className="hidden md:flex items-center gap-1.5 bg-zinc-800/60 border border-zinc-700/50 px-3 py-1.5 rounded-lg text-xs text-zinc-300">
-            <ShieldCheck className="w-3.5 h-3.5 text-[#1DB954]" />
-            <span className="font-medium">Client-Side Engine</span>
-          </div>
-
+          {/* User Account / Sign In */}
           {user ? (
             <div className="relative" ref={menuRef}>
-              {/* Clickable User Pill */}
               <button
                 onClick={() => {
                   soundEffects.playClick();
                   setIsMenuOpen(!isMenuOpen);
                 }}
-                className={`flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700/90 border border-zinc-700 hover:border-zinc-600 px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer shadow-sm ${
-                  isMenuOpen ? "border-[#1DB954] ring-1 ring-[#1DB954]/50" : ""
-                }`}
+                className="flex items-center gap-1.5 bg-[#17191b] hover:bg-[#1d2023] border border-[#292c30] px-2 py-1 rounded-md text-xs transition-colors cursor-pointer"
               >
-                <div className="w-6 h-6 rounded-full bg-[#1DB954] text-black font-extrabold flex items-center justify-center text-xs">
+                <div className="w-5 h-5 rounded-full bg-[#1db954] text-black font-bold flex items-center justify-center text-[10px]">
                   {user.name.charAt(0).toUpperCase()}
                 </div>
-                <span className="font-bold text-white text-xs max-w-[130px] truncate">{user.name}</span>
-                <ChevronDown className={`w-3.5 h-3.5 text-zinc-400 transition-transform ${isMenuOpen ? "rotate-180" : ""}`} />
+                <span className="font-medium text-zinc-200 max-w-[90px] truncate">{user.name}</span>
+                <ChevronDown className="w-3 h-3 text-zinc-400" />
               </button>
 
-              {/* Floating Dropdown Menu */}
               {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-[#18181b] border border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 flex flex-col gap-1 text-xs animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-3 py-2 border-b border-zinc-800/80 mb-1">
-                    <p className="font-bold text-white truncate">{user.name}</p>
-                    <p className="text-[10px] text-zinc-400 truncate">{user.email}</p>
+                <div className="absolute right-0 top-full mt-1.5 w-52 bg-[#17191b] border border-[#292c30] rounded-lg shadow-xl p-1.5 z-50 flex flex-col gap-0.5 text-xs animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-2 py-1.5 border-b border-[#292c30] mb-0.5">
+                    <p className="font-semibold text-zinc-100 truncate">{user.name}</p>
+                    <p className="text-[11px] text-zinc-500 truncate">{user.email}</p>
                   </div>
 
                   <button
@@ -216,9 +217,9 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
                       setIsMenuOpen(false);
                       onNavigateToProfile?.();
                     }}
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-zinc-200 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left font-medium"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md text-zinc-300 hover:bg-[#1d2023] hover:text-white transition-colors cursor-pointer text-left"
                   >
-                    <User className="w-4 h-4 text-[#1DB954]" />
+                    <User className="w-3.5 h-3.5 text-zinc-400" />
                     <span>Profile & Account</span>
                   </button>
 
@@ -228,9 +229,9 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
                       setIsMenuOpen(false);
                       onNavigateToDocs?.("saved");
                     }}
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-zinc-200 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left font-medium"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md text-zinc-300 hover:bg-[#1d2023] hover:text-white transition-colors cursor-pointer text-left"
                   >
-                    <FolderOpen className="w-4 h-4 text-[#1DB954]" />
+                    <FolderOpen className="w-3.5 h-3.5 text-zinc-400" />
                     <span>Saved Documents</span>
                   </button>
 
@@ -240,13 +241,13 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
                       setIsMenuOpen(false);
                       onNavigateToDocs?.("downloads");
                     }}
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-zinc-200 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer text-left font-medium"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md text-zinc-300 hover:bg-[#1d2023] hover:text-white transition-colors cursor-pointer text-left"
                   >
-                    <ArrowDownToLine className="w-4 h-4 text-[#1DB954]" />
+                    <ArrowDownToLine className="w-3.5 h-3.5 text-zinc-400" />
                     <span>Downloads</span>
                   </button>
 
-                  <div className="border-t border-zinc-800/80 my-1"></div>
+                  <div className="border-t border-[#292c30] my-1" />
 
                   <button
                     onClick={() => {
@@ -254,24 +255,24 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
                       setIsMenuOpen(false);
                       onLogout?.();
                     }}
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 transition-colors cursor-pointer text-left font-medium"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md text-rose-400 hover:bg-rose-950/30 transition-colors cursor-pointer text-left"
                   >
-                    <LogOut className="w-4 h-4" />
+                    <LogOut className="w-3.5 h-3.5" />
                     <span>Sign Out</span>
                   </button>
                 </div>
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => {
                   soundEffects.playClick();
                   onOpenAuthModal("login");
                 }}
-                className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg border border-zinc-700 transition-colors cursor-pointer"
+                className="flex items-center gap-1 bg-[#17191b] hover:bg-[#1d2023] text-zinc-200 text-xs font-medium px-2.5 py-1.5 rounded-md border border-[#292c30] transition-colors cursor-pointer"
               >
-                <LogIn className="w-3.5 h-3.5 text-zinc-300" />
+                <LogIn className="w-3 h-3 text-zinc-400" />
                 <span>Sign In</span>
               </button>
 
@@ -280,9 +281,9 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
                   soundEffects.playClick();
                   onOpenAuthModal("register");
                 }}
-                className="hidden sm:flex items-center gap-1.5 bg-zinc-700 hover:bg-zinc-600 text-white font-bold text-xs px-3 py-1.5 rounded-lg border border-zinc-600 transition-colors cursor-pointer"
+                className="hidden sm:flex items-center gap-1 bg-[#1d2023] hover:bg-[#25292d] text-zinc-200 text-xs font-medium px-2.5 py-1.5 rounded-md border border-[#292c30] transition-colors cursor-pointer"
               >
-                <UserPlus className="w-3.5 h-3.5 text-[#1DB954]" />
+                <UserPlus className="w-3 h-3 text-[#1db954]" />
                 <span>Register</span>
               </button>
             </div>
@@ -290,9 +291,9 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
         </div>
       </div>
 
-      {/* Category Filter Tabs */}
+      {/* Category Tabs Strip (when browsing tools on Home) */}
       {!activeToolId && (
-        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 custom-scrollbar scrollbar-none">
+        <div className="h-9 px-4 flex items-center gap-1 overflow-x-auto border-t border-[#292c30]/50 custom-scrollbar scrollbar-none bg-[#0f1011]">
           {categories.map((cat) => {
             const isSelected = selectedCategory === cat.id;
             return (
@@ -302,13 +303,13 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
                   soundEffects.playClick();
                   setSelectedCategory(cat.id);
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all shrink-0 border cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md text-xs transition-colors shrink-0 cursor-pointer ${
                   isSelected
-                    ? "bg-zinc-100 text-zinc-900 border-zinc-100 font-semibold"
-                    : "bg-zinc-800/60 text-zinc-400 border-zinc-700/50 font-medium hover:bg-zinc-800 hover:text-zinc-200"
+                    ? "bg-[#17191b] text-[#f1f3f5] font-semibold border border-[#292c30]"
+                    : "text-[#9aa0a6] hover:text-[#f1f3f5] hover:bg-[#17191b]/50"
                 }`}
               >
-                <span>{cat.label}</span>
+                {cat.label}
               </button>
             );
           })}
@@ -317,3 +318,4 @@ export const SpotifyHeader: React.FC<SpotifyHeaderProps> = ({
     </header>
   );
 };
+
