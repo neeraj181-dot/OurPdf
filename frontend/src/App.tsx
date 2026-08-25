@@ -1045,7 +1045,11 @@ export default function App() {
                       <SecuritySearchWorkspace
                         mode={activeToolId as any}
                         activeFile={activeFile}
+                        user={user}
                         onOpenFilePicker={() => fileInputRef.current?.click()}
+                        onSaveToCloud={handleSaveToMyDocuments}
+                        onSaveToGoogleDrive={handleSaveToGoogleDrive}
+                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
                       />
                     )}
 
