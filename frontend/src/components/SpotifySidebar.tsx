@@ -6,19 +6,31 @@ import {
   Plus,
   Trash2,
   FolderOpen,
-  Zap,
   Lock,
   Volume2,
   VolumeX,
-  FileCheck,
   Eraser,
   User,
   Search,
   Edit3,
   Download,
-  MoreVertical,
   X,
   StickyNote,
+  Layers,
+  Scissors,
+  Crop,
+  RotateCw,
+  Hash,
+  FileCode,
+  TableProperties,
+  FileSpreadsheet,
+  FileImage,
+  FileArchive,
+  Stamp,
+  FileSignature,
+  Code,
+  ImagePlus,
+  CheckCircle2,
 } from "lucide-react";
 import { PDFFileItem } from "../types";
 import { UserProfile } from "../lib/api";
@@ -36,6 +48,7 @@ interface SpotifySidebarProps {
   onOpenFilePicker: () => void;
   onDropFiles?: (files: FileList | File[]) => void;
   activeView: string;
+  activeToolId?: string | null;
   setActiveView: (view: string) => void;
   onSelectPresetPipeline: (preset: string) => void;
   soundEnabled: boolean;
@@ -55,6 +68,7 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
   onOpenFilePicker,
   onDropFiles,
   activeView,
+  activeToolId,
   setActiveView,
   onSelectPresetPipeline,
   soundEnabled,
@@ -79,337 +93,122 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
       const buffer = await item.file.arrayBuffer();
       downloadPdfBytes(new Uint8Array(buffer), item.name);
       soundEffects.playSuccess();
-    } catch (err) {
+    } catch {
       alert("Failed to download document.");
     }
   };
 
-  return (
-    <aside className="w-64 bg-[#09090b] text-zinc-400 flex flex-col h-full gap-2 p-2 select-none shrink-0 font-sans">
-      {/* Top Navigation Box */}
-      <div className="bg-[#121215] rounded-xl p-4 flex flex-col gap-3 border border-zinc-800/80">
-        {/* Brand Header */}
-        <div className="flex items-center justify-between pb-1">
-          <div className="flex items-center gap-2.5">
-            <img
-              src="/ourpdf-icon.png"
-              alt="OurPDF"
-              className="w-8 h-8 rounded-lg object-contain bg-zinc-900 border border-zinc-800 shadow-sm p-0.5"
-            />
-            <div>
-              <h1 className="text-zinc-100 font-bold tracking-tight text-sm leading-none flex items-center gap-1.5">
-                OurPDF
-              </h1>
-              <p className="text-[11px] text-zinc-400 mt-1 font-normal">Document Processing</p>
-            </div>
-          </div>
+  const navItemClass = (isActive: boolean) =>
+    `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors w-full text-left cursor-pointer ${
+      isActive
+        ? "bg-[#17191b] text-white border-l-2 border-[#1db954]"
+        : "text-[#9aa0a6] hover:text-[#f1f3f5] hover:bg-[#17191b]/60"
+    }`;
 
-          <button
-            onClick={() => {
-              const next = !soundEnabled;
-              setSoundEnabled(next);
-              soundEffects.enabled = next;
-              if (next) soundEffects.playClick();
-            }}
-            title={soundEnabled ? "Mute audio effects" : "Enable audio effects"}
-            className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
-          >
-            {soundEnabled ? (
-              <Volume2 className="w-4 h-4 text-[#1DB954]" />
-            ) : (
-              <VolumeX className="w-4 h-4 text-zinc-400" />
-            )}
-          </button>
+  const navIconClass = (isActive: boolean) =>
+    `w-4 h-4 shrink-0 ${isActive ? "text-[#1db954]" : "text-zinc-400"}`;
+
+  return (
+    <aside className="w-60 bg-[#121315] border-r border-[#292c30] text-zinc-300 flex flex-col h-full select-none shrink-0 font-sans">
+      {/* 1. Header: Brand Logo & Subtitle */}
+      <div className="h-12 px-4 border-b border-[#292c30] flex items-center justify-between shrink-0">
+        <div
+          onClick={() => {
+            soundEffects.playClick();
+            setActiveView("home");
+          }}
+          className="flex items-center gap-2.5 cursor-pointer"
+        >
+          <img
+            src="/ourpdf-icon.png"
+            alt="OurPDF"
+            className="w-6 h-6 rounded-md object-contain bg-[#17191b] border border-[#292c30] p-0.5"
+          />
+          <div>
+            <h1 className="text-[#f1f3f5] font-bold tracking-tight text-xs leading-none">
+              OurPDF
+            </h1>
+            <p className="text-[10px] text-zinc-500 mt-0.5 font-normal">PDF workspace</p>
+          </div>
         </div>
 
-        {/* Nav Items */}
-        <nav className="flex flex-col gap-1 mt-1">
-          <button
-            onClick={() => {
-              soundEffects.playClick();
-              setActiveView("home");
-            }}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-              activeView === "home"
-                ? "bg-zinc-800 text-zinc-100"
-                : "hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <Home className={`w-4 h-4 ${activeView === "home" ? "text-[#1DB954]" : "text-zinc-400"}`} />
-            Workspace Home
-          </button>
-
-          <button
-            onClick={() => {
-              soundEffects.playClick();
-              setActiveView("browse");
-            }}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-              activeView === "browse"
-                ? "bg-zinc-800 text-zinc-100"
-                : "hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <Grid className={`w-4 h-4 ${activeView === "browse" ? "text-[#1DB954]" : "text-zinc-400"}`} />
-            All PDF Tools
-          </button>
-
-          <button
-            onClick={() => {
-              soundEffects.playClick();
-              setActiveView("editor");
-            }}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-              activeView === "editor"
-                ? "bg-zinc-800 text-zinc-100"
-                : "hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <FileText className={`w-4 h-4 ${activeView === "editor" ? "text-[#1DB954]" : "text-zinc-400"}`} />
-            Create & Edit PDF
-          </button>
-
-          <button
-            onClick={() => {
-              soundEffects.playClick();
-              setActiveView("my-docs");
-            }}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-              activeView === "my-docs"
-                ? "bg-zinc-800 text-zinc-100"
-                : "hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <FolderOpen className={`w-4 h-4 ${activeView === "my-docs" ? "text-[#1DB954]" : "text-zinc-400"}`} />
-            My Documents
-          </button>
-
-          <button
-            onClick={() => {
-              soundEffects.playClick();
-              setActiveView("profile");
-            }}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-              activeView === "profile"
-                ? "bg-zinc-800 text-zinc-100"
-                : "hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <User className={`w-4 h-4 ${activeView === "profile" ? "text-[#1DB954]" : "text-zinc-400"}`} />
-            Profile & Account
-          </button>
-        </nav>
+        {/* Audio Effects Toggle */}
+        <button
+          onClick={() => {
+            const next = !soundEnabled;
+            setSoundEnabled(next);
+            soundEffects.enabled = next;
+            if (next) soundEffects.playClick();
+          }}
+          title={soundEnabled ? "Mute audio effects" : "Enable audio effects"}
+          className="p-1 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-[#17191b] transition-colors"
+        >
+          {soundEnabled ? (
+            <Volume2 className="w-3.5 h-3.5 text-[#1db954]" />
+          ) : (
+            <VolumeX className="w-3.5 h-3.5" />
+          )}
+        </button>
       </div>
 
-      {/* Library & Active Documents Section with Drag & Drop */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDraggingOver(true);
-        }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDraggingOver(false);
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDraggingOver(false);
-          if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onDropFiles) {
-            onDropFiles(e.dataTransfer.files);
-          }
-        }}
-        className={`relative bg-[#121215] rounded-xl p-3 flex-1 flex flex-col min-h-0 border transition-all overflow-hidden ${
-          isDraggingOver ? "border-[#1DB954] bg-[#1DB954]/10 shadow-[0_0_20px_rgba(29,185,84,0.2)]" : "border-zinc-800/80"
-        }`}
-      >
-        {isDraggingOver && (
-          <div className="absolute inset-0 z-20 bg-black/80 backdrop-blur-xs flex flex-col items-center justify-center p-4 text-center border-2 border-dashed border-[#1DB954] rounded-xl">
-            <FolderOpen className="w-8 h-8 text-[#1DB954] animate-bounce mb-2" />
-            <p className="text-xs font-bold text-zinc-100">Drop PDF or Image files here</p>
-            <p className="text-[10px] text-zinc-400 mt-0.5">They will be added to Active Documents</p>
+      {/* 2. Scrollable Navigation Sections */}
+      <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-4 custom-scrollbar">
+        {/* Section: WORKSPACE */}
+        <div>
+          <div className="px-3 py-1 text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">
+            Workspace
           </div>
-        )}
-
-        <div className="flex items-center justify-between px-1 py-1 mb-1.5">
-          <div className="flex items-center gap-2 text-zinc-200 font-bold text-xs">
-            <FolderOpen className="w-4 h-4 text-[#1DB954]" />
-            <span>Active Documents</span>
-            <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded font-mono">
-              {files.length}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1">
-            {files.length > 0 && (
-              <button
-                onClick={() => {
-                  setIsSearching(!isSearching);
-                  if (isSearching) setDocSearchQuery("");
-                }}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  isSearching ? "bg-zinc-800 text-[#1DB954]" : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100"
-                }`}
-                title="Search active documents"
-              >
-                <Search className="w-3.5 h-3.5" />
-              </button>
-            )}
+          <div className="flex flex-col gap-0.5 mt-0.5">
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                setActiveView("home");
+              }}
+              className={navItemClass(activeView === "home" && !activeToolId)}
+            >
+              <Home className={navIconClass(activeView === "home" && !activeToolId)} />
+              <span>Home</span>
+            </button>
 
             <button
               onClick={() => {
                 soundEffects.playClick();
-                onOpenFilePicker();
+                setActiveView("browse");
               }}
-              className="p-1.5 rounded-lg hover:bg-zinc-800 hover:text-zinc-100 transition-colors text-zinc-400 cursor-pointer"
-              title="Upload PDF or Image file"
+              className={navItemClass(activeView === "browse" && !activeToolId)}
             >
-              <Plus className="w-4 h-4" />
+              <Grid className={navIconClass(activeView === "browse" && !activeToolId)} />
+              <span>All Tools</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                setActiveView("my-docs");
+              }}
+              className={navItemClass(activeView === "my-docs")}
+            >
+              <FolderOpen className={navIconClass(activeView === "my-docs")} />
+              <span>Documents</span>
             </button>
           </div>
         </div>
 
-        {/* Mini Document Search Input */}
-        {isSearching && (
-          <div className="relative mb-2">
-            <Search className="w-3 h-3 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={docSearchQuery}
-              onChange={(e) => setDocSearchQuery(e.target.value)}
-              placeholder="Filter active files..."
-              className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 text-[11px] rounded-lg pl-7 pr-6 py-1.5 focus:border-[#1DB954] focus:outline-none"
-              autoFocus
-            />
-            {docSearchQuery && (
-              <button
-                onClick={() => setDocSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
+        {/* Section: CREATE & EDIT */}
+        <div>
+          <div className="px-3 py-1 text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">
+            Create & Edit
           </div>
-        )}
-
-        {/* Uploaded Files List */}
-        <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-1 custom-scrollbar">
-          {files.length === 0 ? (
-            <div className="text-center py-6 px-3 border border-dashed border-zinc-800 rounded-lg my-2 flex flex-col items-center gap-2 bg-zinc-900/30">
-              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400">
-                <FileText className="w-4 h-4" />
-              </div>
-              <p className="text-xs text-zinc-400 font-normal">No PDF uploaded</p>
-              <p className="text-[10px] text-zinc-500">Click below or drag & drop files here</p>
-              <button
-                onClick={() => {
-                  soundEffects.playClick();
-                  onOpenFilePicker();
-                }}
-                className="mt-1 bg-zinc-100 hover:bg-white text-zinc-900 text-xs font-semibold px-3 py-1.5 rounded-md transition-colors cursor-pointer"
-              >
-                Upload File
-              </button>
-            </div>
-          ) : filteredFiles.length === 0 ? (
-            <div className="text-center py-6 px-2 text-zinc-500 text-xs">
-              No matching files found.
-            </div>
-          ) : (
-            filteredFiles.map((item) => {
-              const isActive = item.id === activeFileId;
-              const isImage = !item.name.toLowerCase().endsWith(".pdf");
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    soundEffects.playClick();
-                    onSelectFile(item.id);
-                  }}
-                  className={`group relative flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
-                    isActive
-                      ? "bg-zinc-800 text-zinc-100 border-l-2 border-[#1DB954]"
-                      : "hover:bg-zinc-800/60 text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded bg-zinc-900 border border-zinc-700/50 flex items-center justify-center shrink-0 overflow-hidden relative">
-                    {item.pageThumbnails[0] ? (
-                      <img
-                        src={item.pageThumbnails[0]}
-                        alt="Thumbnail"
-                        className="w-full h-full object-cover opacity-90"
-                      />
-                    ) : (
-                      <FileText className="w-3.5 h-3.5 text-zinc-400" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate leading-tight text-zinc-200">{item.name}</p>
-                    <p className="text-[10px] text-zinc-500 mt-0.5 flex items-center gap-1.5">
-                      <span>{isImage ? "Image" : `${item.pagesCount} p`}</span>
-                      <span>•</span>
-                      <span>{(item.size / 1024).toFixed(0)} KB</span>
-                    </p>
-                  </div>
-
-                  {/* Actions on Hover */}
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-all">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setRenameTarget(item);
-                      }}
-                      className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
-                      title="Rename document"
-                    >
-                      <Edit3 className="w-3 h-3" />
-                    </button>
-
-                    <button
-                      onClick={(e) => handleDownloadActiveFile(item, e)}
-                      className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-[#1DB954] transition-colors"
-                      title="Download PDF"
-                    >
-                      <Download className="w-3 h-3" />
-                    </button>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        soundEffects.playClick();
-                        onRemoveFile(item.id);
-                      }}
-                      className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-rose-400 transition-colors"
-                      title="Remove document"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-
-          {/* Quick Workflows */}
-          <div className="mt-4 pt-3 border-t border-zinc-800/80">
-            <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-semibold px-2 mb-2">
-              Quick Actions
-            </p>
-
+          <div className="flex flex-col gap-0.5 mt-0.5">
             <button
               onClick={() => {
                 soundEffects.playClick();
-                onSelectPresetPipeline("ai-summary");
+                onSelectPresetPipeline("create-pdf");
               }}
-              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+              className={navItemClass(activeToolId === "create-pdf")}
             >
-              <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
-                <FileCheck className="w-3 h-3 text-[#1DB954]" />
-              </div>
-              <span className="truncate">Executive Brief</span>
+              <FileText className={navIconClass(activeToolId === "create-pdf")} />
+              <span>Create PDF</span>
             </button>
 
             <button
@@ -417,26 +216,188 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 soundEffects.playClick();
                 onSelectPresetPipeline("bit-notes-maker");
               }}
-              title="Arrange small notes into compact printable sheets with cut lines"
-              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+              className={navItemClass(activeToolId === "bit-notes-maker")}
             >
-              <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
-                <StickyNote className="w-3 h-3 text-[#1DB954]" />
-              </div>
-              <span className="truncate">Bit Notes Maker</span>
+              <StickyNote className={navIconClass(activeToolId === "bit-notes-maker")} />
+              <span>Bit Notes Maker</span>
             </button>
 
             <button
               onClick={() => {
                 soundEffects.playClick();
+                onSelectPresetPipeline("sign-pdf");
+              }}
+              className={navItemClass(activeToolId === "sign-pdf" || activeToolId === "sign")}
+            >
+              <FileSignature className={navIconClass(activeToolId === "sign-pdf" || activeToolId === "sign")} />
+              <span>Fill & Sign</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("word-to-pdf");
+              }}
+              className={navItemClass(activeToolId === "word-to-pdf")}
+            >
+              <FileCode className={navIconClass(activeToolId === "word-to-pdf")} />
+              <span>Word → PDF</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("img-to-pdf");
+              }}
+              className={navItemClass(activeToolId === "img-to-pdf")}
+            >
+              <ImagePlus className={navIconClass(activeToolId === "img-to-pdf")} />
+              <span>Image → PDF</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Section: ORGANIZE */}
+        <div>
+          <div className="px-3 py-1 text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">
+            Organize
+          </div>
+          <div className="flex flex-col gap-0.5 mt-0.5">
+            <button
+              onClick={() => {
+                soundEffects.playClick();
                 onSelectPresetPipeline("merge");
               }}
-              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+              className={navItemClass(activeToolId === "merge")}
             >
-              <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
-                <Zap className="w-3 h-3 text-[#1DB954]" />
-              </div>
-              <span className="truncate">Merge Multiple PDFs</span>
+              <Layers className={navIconClass(activeToolId === "merge")} />
+              <span>Merge</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("split");
+              }}
+              className={navItemClass(activeToolId === "split")}
+            >
+              <Scissors className={navIconClass(activeToolId === "split")} />
+              <span>Split</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("organize");
+              }}
+              className={navItemClass(activeToolId === "organize")}
+            >
+              <Grid className={navIconClass(activeToolId === "organize")} />
+              <span>Reorder Pages</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("rotate");
+              }}
+              className={navItemClass(activeToolId === "rotate")}
+            >
+              <RotateCw className={navIconClass(activeToolId === "rotate")} />
+              <span>Rotate</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("crop-pdf");
+              }}
+              className={navItemClass(activeToolId === "crop-pdf")}
+            >
+              <Crop className={navIconClass(activeToolId === "crop-pdf")} />
+              <span>Crop</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Section: CONVERT */}
+        <div>
+          <div className="px-3 py-1 text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">
+            Convert
+          </div>
+          <div className="flex flex-col gap-0.5 mt-0.5">
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("pdf-to-word");
+              }}
+              className={navItemClass(activeToolId === "pdf-to-word")}
+            >
+              <FileCode className={navIconClass(activeToolId === "pdf-to-word")} />
+              <span>PDF → Word</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("pdf-to-excel");
+              }}
+              className={navItemClass(activeToolId === "pdf-to-excel")}
+            >
+              <TableProperties className={navIconClass(activeToolId === "pdf-to-excel")} />
+              <span>PDF → Excel</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("pdf-to-powerpoint");
+              }}
+              className={navItemClass(activeToolId === "pdf-to-powerpoint")}
+            >
+              <FileSpreadsheet className={navIconClass(activeToolId === "pdf-to-powerpoint")} />
+              <span>PDF → PowerPoint</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("pdf-to-png");
+              }}
+              className={navItemClass(activeToolId === "pdf-to-png" || activeToolId === "pdf-to-jpg")}
+            >
+              <FileImage className={navIconClass(activeToolId === "pdf-to-png" || activeToolId === "pdf-to-jpg")} />
+              <span>PDF → Images</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Section: OPTIMIZE & SECURITY */}
+        <div>
+          <div className="px-3 py-1 text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">
+            Optimize & Security
+          </div>
+          <div className="flex flex-col gap-0.5 mt-0.5">
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("compress-pdf");
+              }}
+              className={navItemClass(activeToolId === "compress-pdf" || activeToolId === "compress")}
+            >
+              <FileArchive className={navIconClass(activeToolId === "compress-pdf" || activeToolId === "compress")} />
+              <span>Compress PDF</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEffects.playClick();
+                onSelectPresetPipeline("protect");
+              }}
+              className={navItemClass(activeToolId === "protect")}
+            >
+              <Lock className={navIconClass(activeToolId === "protect")} />
+              <span>Password Protect</span>
             </button>
 
             <button
@@ -444,13 +405,10 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 soundEffects.playClick();
                 onSelectPresetPipeline("watermark");
               }}
-              title="Add text or logo watermark"
-              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+              className={navItemClass(activeToolId === "watermark")}
             >
-              <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
-                <Lock className="w-3 h-3 text-[#1DB954]" />
-              </div>
-              <span className="truncate">Add Watermark</span>
+              <Stamp className={navIconClass(activeToolId === "watermark")} />
+              <span>Watermark</span>
             </button>
 
             <button
@@ -458,76 +416,125 @@ export const SpotifySidebar: React.FC<SpotifySidebarProps> = ({
                 soundEffects.playClick();
                 onSelectPresetPipeline("remove-watermark");
               }}
-              title="Mark and erase unwanted watermarks from authorized documents or images"
-              className="w-full text-left flex items-center gap-2.5 p-2 rounded-lg hover:bg-zinc-800/60 text-xs text-zinc-300 font-medium transition-colors"
+              className={navItemClass(activeToolId === "remove-watermark")}
             >
-              <div className="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
-                <Eraser className="w-3 h-3 text-[#1DB954]" />
-              </div>
-              <span className="truncate">Remove Watermark</span>
+              <Eraser className={navIconClass(activeToolId === "remove-watermark")} />
+              <span>Remove Watermark</span>
             </button>
           </div>
         </div>
-      </div>
 
-      {/* User Account Section */}
-      <div className="bg-[#121215] rounded-xl p-3 border border-zinc-800/80 flex items-center justify-between text-xs">
-        {user ? (
-          <div className="flex items-center justify-between w-full">
-            <div
-              onClick={() => {
-                soundEffects.playClick();
-                setActiveView("profile");
-              }}
-              className="flex items-center gap-2.5 min-w-0 cursor-pointer group flex-1"
+        {/* Section: RECENT DOCUMENTS LIST */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingOver(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingOver(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingOver(false);
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onDropFiles) {
+              onDropFiles(e.dataTransfer.files);
+            }
+          }}
+          className={`pt-2 border-t border-[#292c30] flex flex-col gap-1.5 transition-colors ${
+            isDraggingOver ? "bg-[#1db954]/5 rounded-md p-1 border border-[#1db954]" : ""
+          }`}
+        >
+          <div className="flex items-center justify-between px-2">
+            <span className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">
+              Recent Documents
+            </span>
+            <button
+              onClick={() => onOpenFilePicker()}
+              className="text-zinc-500 hover:text-zinc-200 p-0.5 cursor-pointer"
+              title="Add document"
             >
-              <div className="w-8 h-8 rounded-full bg-[#1DB954] text-black font-extrabold flex items-center justify-center text-xs shrink-0 group-hover:ring-2 group-hover:ring-[#1DB954]/50 transition-all">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <span className="font-bold text-white block truncate group-hover:text-[#1DB954] transition-colors">
-                  {user.name}
-                </span>
-                <span className="text-[10px] text-zinc-400 block truncate">{user.email}</span>
-              </div>
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
+
+          {files.length === 0 ? (
+            <p className="text-[11px] text-zinc-500 px-3 py-1 font-normal italic">
+              No recent documents
+            </p>
+          ) : (
+            <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto custom-scrollbar pr-0.5">
+              {filteredFiles.slice(0, 8).map((item) => {
+                const isActive = item.id === activeFileId;
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      soundEffects.playClick();
+                      onSelectFile(item.id);
+                    }}
+                    className={`group flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition-colors ${
+                      isActive
+                        ? "bg-[#17191b] text-white border-l-2 border-[#1db954]"
+                        : "text-[#9aa0a6] hover:text-[#f1f3f5] hover:bg-[#17191b]/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-3.5 h-3.5 shrink-0 text-zinc-500 group-hover:text-zinc-300" />
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium leading-tight">{item.name}</p>
+                        <p className="text-[10px] text-zinc-500 font-mono">
+                          {item.pagesCount}p · {(item.size / 1024).toFixed(0)}KB
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                      <button
+                        onClick={(e) => handleDownloadActiveFile(item, e)}
+                        className="p-1 text-zinc-400 hover:text-[#1db954]"
+                        title="Download"
+                      >
+                        <Download className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          soundEffects.playClick();
+                          onRemoveFile(item.id);
+                        }}
+                        className="p-1 text-zinc-400 hover:text-rose-400"
+                        title="Remove"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <button
-              onClick={() => {
-                soundEffects.playClick();
-                onLogout();
-              }}
-              className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-rose-400 text-[10px] font-bold cursor-pointer"
-              title="Sign Out"
-            >
-              Logout
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1.5 w-full">
-            <button
-              onClick={() => {
-                soundEffects.playClick();
-                onOpenAuthModal("login");
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold py-2 rounded-lg text-xs transition-colors cursor-pointer shadow-md"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Sign In</span>
-            </button>
-            <button
-              onClick={() => {
-                soundEffects.playClick();
-                onOpenAuthModal("register");
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold py-1.5 rounded-lg text-xs transition-colors cursor-pointer border border-zinc-700"
-            >
-              <span>Create Free Account</span>
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Rename Modal for Active Documents */}
+      {/* 3. Footer: Account & Settings Navigation */}
+      <div className="p-2.5 border-t border-[#292c30] bg-[#0f1011] shrink-0">
+        <button
+          onClick={() => {
+            soundEffects.playClick();
+            setActiveView("profile");
+          }}
+          className={navItemClass(activeView === "profile")}
+        >
+          <User className={navIconClass(activeView === "profile")} />
+          <span className="truncate">{user ? user.name : "Profile & Settings"}</span>
+        </button>
+      </div>
+
+      {/* Rename Modal */}
       {renameTarget && (
         <RenameDocModal
           isOpen={true}

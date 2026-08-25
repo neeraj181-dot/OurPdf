@@ -28,6 +28,7 @@ import {
 
 import { SpotifySidebar } from "./components/SpotifySidebar";
 import { SpotifyHeader } from "./components/SpotifyHeader";
+import { SpotifyPlayerBar } from "./components/SpotifyPlayerBar";
 import { ToolGrid } from "./components/ToolGrid";
 
 import { MergeWorkspace } from "./components/workspaces/MergeWorkspace";
@@ -695,41 +696,43 @@ export default function App() {
 
       {/* Main Studio App Shell */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left Spotify Sidebar */}
-        <SpotifySidebar
-          files={files}
-          activeFileId={activeFileId}
-          onSelectFile={(id) => setActiveFileId(id)}
-          onRemoveFile={handleRemoveFile}
-          onRenameFile={handleRenameFile}
-          onUploadClick={() => fileInputRef.current?.click()}
-          onOpenFilePicker={() => fileInputRef.current?.click()}
-          onDropFiles={handleFileUpload}
-          activeView={activeView}
-          setActiveView={(view) => {
-            setActiveView(view);
-            if (view === "ai-lab") setActiveToolId("ai-summary");
-            if (view === "home" || view === "profile" || view === "my-docs") setActiveToolId(null);
-            if (view === "editor") setActiveToolId("create-pdf");
-          }}
-          onSelectPresetPipeline={handleSelectPresetPipeline}
-          soundEnabled={soundEnabled}
-          setSoundEnabled={setSoundEnabled}
-          user={user}
-          onOpenAuthModal={(mode) => {
-            setAuthModalMode(mode || "login");
-            setAuthModalSubtitle(undefined);
-            setIsAuthModalOpen(true);
-          }}
-          onLogout={() => {
-            apiLogout();
-            setUser(null);
-            soundEffects.playClick();
-          }}
-        />
+        {/* Left Spotify Sidebar - Auto-hidden when a tool is opened */}
+        {!activeToolId && (
+          <SpotifySidebar
+            files={files}
+            activeFileId={activeFileId}
+            onSelectFile={(id) => setActiveFileId(id)}
+            onRemoveFile={handleRemoveFile}
+            onRenameFile={handleRenameFile}
+            onUploadClick={() => fileInputRef.current?.click()}
+            onOpenFilePicker={() => fileInputRef.current?.click()}
+            onDropFiles={handleFileUpload}
+            activeView={activeView}
+            setActiveView={(view) => {
+              setActiveView(view);
+              if (view === "ai-lab") setActiveToolId("ai-summary");
+              if (view === "home" || view === "profile" || view === "my-docs") setActiveToolId(null);
+              if (view === "editor") setActiveToolId("create-pdf");
+            }}
+            onSelectPresetPipeline={handleSelectPresetPipeline}
+            soundEnabled={soundEnabled}
+            setSoundEnabled={setSoundEnabled}
+            user={user}
+            onOpenAuthModal={(mode) => {
+              setAuthModalMode(mode || "login");
+              setAuthModalSubtitle(undefined);
+              setIsAuthModalOpen(true);
+            }}
+            onLogout={() => {
+              apiLogout();
+              setUser(null);
+              soundEffects.playClick();
+            }}
+          />
+        )}
 
         {/* Right Stage Main Content */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#121212] rounded-xl my-2 mr-2 border border-zinc-900/80 overflow-hidden shadow-2xl relative">
+        <div className="flex-1 flex flex-col min-w-0 bg-[#0f1011] overflow-hidden relative">
           {/* Header Bar */}
           <SpotifyHeader
             searchQuery={searchQuery}
@@ -739,6 +742,7 @@ export default function App() {
             onUploadClick={() => fileInputRef.current?.click()}
             onOpenDrivePicker={() => setIsDrivePickerOpen(true)}
             activeToolId={activeToolId}
+            activeToolTitle={activeToolObj?.title || null}
             onBackClick={() => {
               setActiveToolId(null);
               setDownloadBytes(null);
@@ -766,7 +770,7 @@ export default function App() {
           />
 
           {/* Dynamic Scrollable Stage View */}
-          <main className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+          <main className="flex-1 overflow-y-auto p-5 custom-scrollbar">
             {activeView === "profile" ? (
               <ProfileWorkspace
                 user={user}
@@ -806,69 +810,44 @@ export default function App() {
                 {/* VIEW 1: HOME BROWSE GRID */}
                 {!activeToolId && (
                   <div className="flex flex-col gap-6">
-                    {/* Clean Feature Header */}
-                    <div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-6">
-                      <div className="max-w-xl text-center sm:text-left">
-                        <div className="flex items-center justify-center sm:justify-start gap-2 text-xs font-medium text-[#1DB954] uppercase tracking-wider">
-                          <FileText className="w-4 h-4 text-[#1DB954]" />
-                          <span>OurPDF Document Processing</span>
-                        </div>
-                        <h2 className="text-2xl font-bold text-zinc-100 mt-1 tracking-tight leading-snug">
-                          Create, Edit & Organize PDF Documents
-                        </h2>
-                        <p className="text-xs text-zinc-400 mt-2 leading-relaxed font-normal">
-                          Create new documents, edit text, insert images, organize pages, merge PDFs, optimize, and convert documents in one unified workspace.
+                    {/* Clean Workspace Header */}
+                    <div className="flex items-center justify-between pb-3 border-b border-[#292c30]">
+                      <div>
+                        <h1 className="text-base font-semibold text-[#f1f3f5] tracking-tight">
+                          {selectedCategory === "all"
+                            ? "All PDF Tools"
+                            : `${selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1)} Tools`}
+                        </h1>
+                        <p className="text-xs text-[#9aa0a6] mt-0.5 font-normal">
+                          Select a tool to create, edit, convert, or organize documents with client-side local execution.
                         </p>
-
-                        <div className="flex items-center justify-center sm:justify-start gap-3 mt-4">
-                          <button
-                            onClick={() => {
-                              setActiveView("home");
-                              setActiveToolId("create-pdf");
-                            }}
-                            className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors cursor-pointer shadow-md"
-                          >
-                            <Plus className="w-4 h-4 stroke-[2.5]" />
-                            <span>Create & Edit PDF</span>
-                          </button>
-
-                          <button
-                            onClick={() => handleSelectTool("import-pdf")}
-                            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700/80 text-zinc-200 font-medium text-xs px-4 py-2.5 rounded-lg border border-zinc-700/60 transition-colors cursor-pointer"
-                          >
-                            <FileText className="w-4 h-4 text-[#1DB954]" />
-                            <span>Import PDF File</span>
-                          </button>
-                        </div>
                       </div>
 
-                      {/* Right Graphic Badge */}
-                      <div className="bg-zinc-900/80 border border-zinc-800 p-4 rounded-xl flex flex-col items-center gap-1.5 text-center shrink-0">
-                        <div className="w-10 h-10 rounded-lg bg-zinc-800 text-[#1DB954] border border-zinc-700/50 flex items-center justify-center font-bold">
-                          <Zap className="w-5 h-5" />
-                        </div>
-                        <span className="text-xs font-semibold text-zinc-200">100% Client Engine</span>
-                        <span className="text-[11px] text-zinc-400 font-normal">Zero Server Data Retention</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleSelectTool("create-pdf")}
+                          className="flex items-center gap-1.5 bg-[#17191b] hover:bg-[#1d2023] text-zinc-200 text-xs font-medium px-3 py-1.5 rounded-md border border-[#292c30] transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Create PDF</span>
+                        </button>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex items-center gap-1.5 bg-[#1db954] hover:bg-[#1ed760] text-black text-xs font-semibold px-3 py-1.5 rounded-md transition-colors cursor-pointer shadow-xs"
+                        >
+                          <Upload className="w-3.5 h-3.5 stroke-[2.5]" />
+                          <span>Import PDF</span>
+                        </button>
                       </div>
                     </div>
 
-                    {/* Popular Tool Grid Section */}
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-base font-bold text-zinc-100 tracking-tight">
-                          {selectedCategory === "all" ? "All PDF Tools" : `Category: ${selectedCategory.toUpperCase()}`}
-                        </h3>
-                        <span className="text-xs text-zinc-400 font-normal">
-                          {filteredTools.length} tools available
-                        </span>
-                      </div>
-
-                      <ToolGrid
-                        tools={filteredTools}
-                        onSelectTool={handleSelectTool}
-                        activeFileName={activeFile?.name}
-                      />
-                    </div>
+                    {/* Desktop Tool Grid */}
+                    <ToolGrid
+                      tools={filteredTools}
+                      onSelectTool={handleSelectTool}
+                      activeFileName={activeFile?.name}
+                      groupByCategory={selectedCategory === "all" && !searchQuery}
+                    />
                   </div>
                 )}
 
@@ -952,16 +931,16 @@ export default function App() {
                     {(activeToolId === "create-pdf" ||
                       activeToolId === "import-pdf" ||
                       activeToolId === "insert-image") && (
-                      <CreateEditWorkspace
-                        activeFile={activeFile}
-                        onUploadClick={() => fileInputRef.current?.click()}
-                        onOpenFilePicker={() => fileInputRef.current?.click()}
-                        onSelectTool={handleSelectTool}
-                        user={user}
-                        onSaveToCloud={handleSaveToMyDocuments}
-                        onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
-                      />
-                    )}
+                        <CreateEditWorkspace
+                          activeFile={activeFile}
+                          onUploadClick={() => fileInputRef.current?.click()}
+                          onOpenFilePicker={() => fileInputRef.current?.click()}
+                          onSelectTool={handleSelectTool}
+                          user={user}
+                          onSaveToCloud={handleSaveToMyDocuments}
+                          onDownloadRecorded={() => setDocsRefreshKey((k) => k + 1)}
+                        />
+                      )}
 
                     {/* TOOL 5: CONVERT (EXCEL, PPTX, IMAGES, SVG) */}
                     {(activeToolId === "pdf-to-docx" ||
@@ -971,13 +950,13 @@ export default function App() {
                       activeToolId === "img-to-svg" ||
                       activeToolId === "pdf-to-excel" ||
                       activeToolId === "pdf-to-powerpoint") && (
-                      <ConvertWorkspace
-                        mode={activeToolId as any}
-                        activeFile={activeFile}
-                        onImagesToPdfRun={handleRunImagesToPdf}
-                        isProcessing={isProcessing}
-                      />
-                    )}
+                        <ConvertWorkspace
+                          mode={activeToolId as any}
+                          activeFile={activeFile}
+                          onImagesToPdfRun={handleRunImagesToPdf}
+                          isProcessing={isProcessing}
+                        />
+                      )}
 
                     {/* TOOL 5B: HTML TO PDF */}
                     {activeToolId === "html-to-pdf" && (
@@ -1116,6 +1095,68 @@ export default function App() {
               </>
             )}
           </main>
+
+          {/* Desktop Document Status & Action Bar */}
+          <SpotifyPlayerBar
+            activeFile={activeFile}
+            activeToolTitle={activeToolObj?.title || null}
+            activeToolId={activeToolId}
+            onProcessAction={() => { }}
+            isProcessing={isProcessing}
+            downloadBytes={downloadBytes}
+            downloadFileName={downloadFileName}
+            onDownloadClick={() => {
+              if (downloadBytes) {
+                downloadPdfBytes(downloadBytes, downloadFileName);
+                recordDownloadedDoc(downloadFileName, downloadBytes.byteLength);
+                if (user) {
+                  apiRecordDownload(downloadFileName, downloadBytes.byteLength);
+                }
+              }
+            }}
+            onReset={() => {
+              setDownloadBytes(null);
+            }}
+            onSaveToCloud={
+              user && downloadBytes
+                ? async () => {
+                  try {
+                    await apiSaveDocument(
+                      downloadFileName,
+                      downloadBytes,
+                      activeToolObj?.title || "Processed Document"
+                    );
+                    setIsSavedToCloud(true);
+                    setCloudNotification("Saved to My Documents!");
+                    setDocsRefreshKey((k) => k + 1);
+                    setTimeout(() => setCloudNotification(null), 3000);
+                  } catch {
+                    alert("Failed to save document to cloud.");
+                  }
+                }
+                : undefined
+            }
+            isSavedToCloud={isSavedToCloud}
+            onSaveToGoogleDrive={
+              user && downloadBytes
+                ? async () => {
+                  try {
+                    setIsSavingToGoogleDrive(true);
+                    await apiUploadToGoogleDrive(downloadFileName, downloadBytes);
+                    setIsSavedToGoogleDrive(true);
+                    setCloudNotification("Saved directly to Google Drive!");
+                    setTimeout(() => setCloudNotification(null), 3000);
+                  } catch (e: any) {
+                    alert(e.message || "Failed to save to Google Drive");
+                  } finally {
+                    setIsSavingToGoogleDrive(false);
+                  }
+                }
+                : undefined
+            }
+            isSavedToGoogleDrive={isSavedToGoogleDrive}
+            isSavingToGoogleDrive={isSavingToGoogleDrive}
+          />
         </div>
       </div>
 
@@ -1153,3 +1194,4 @@ export default function App() {
     </div>
   );
 }
+
